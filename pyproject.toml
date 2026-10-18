@@ -1,0 +1,116 @@
+[project]
+name = "dortrader"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.146.0",
+    "httpx>=0.28.1",
+    "numpy>=2.5.4",
+    "pyarrow>=26.0.0",
+    "pydantic-settings>=2.16.0",
+    "scipy>=1.18.1",
+    "structlog>=26.1.0",
+    "tzdata>=2026.5",
+    "uvicorn>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.170.1",
+    "import-linter>=2.15",
+    "mypy>=2.4.0",
+    "pip-audit>=2.10.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-socket>=0.8.1",
+    "ruff>=0.17.1",
+    "websockets>=17.2",
+]
+# Only needed to regenerate tests/golden/black76_reference.json.
+reference = [
+    "quantlib>=1.44",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E501"]
+
+[tool.mypy]
+strict = true
+files = ["src", "apps", "tests"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["pyarrow.*", "scipy.*", "QuantLib.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# Network is blocked by default; loopback stays open for the event loop.
+addopts = "--disable-socket --allow-hosts=127.0.0.1,::1 --strict-markers"
+markers = [
+    "golden: compared against independently generated reference values",
+    "property: hypothesis property tests",
+    "network: needs the real network, never run in CI",
+]
+
+[tool.coverage.run]
+source = ["src/dortrader", "apps/worker"]
+
+[tool.importlinter]
+root_packages = ["dortrader", "apps"]
+
+[[tool.importlinter.contracts]]
+name = "domain is a leaf"
+type = "forbidden"
+source_modules = ["dortrader.domain"]
+forbidden_modules = [
+    "dortrader.market_data",
+    "dortrader.storage",
+    "dortrader.pricing",
+    "dortrader.config",
+    "dortrader.log",
+    "dortrader.clock",
+    "apps",
+]
+
+[[tool.importlinter.contracts]]
+name = "pricing depends on domain only"
+type = "forbidden"
+source_modules = ["dortrader.pricing"]
+forbidden_modules = [
+    "dortrader.market_data",
+    "dortrader.storage",
+    "dortrader.config",
+    "dortrader.log",
+    "dortrader.clock",
+    "apps",
+]
+
+[[tool.importlinter.contracts]]
+name = "market_data does not reach pricing, storage or apps"
+type = "forbidden"
+source_modules = ["dortrader.market_data"]
+forbidden_modules = ["dortrader.pricing", "dortrader.storage", "apps"]
+
+[[tool.importlinter.contracts]]
+name = "storage does not reach market_data, pricing or apps"
+type = "forbidden"
+source_modules = ["dortrader.storage"]
+forbidden_modules = ["dortrader.market_data", "dortrader.pricing", "apps"]
+
+[[tool.importlinter.contracts]]
+name = "library code never imports apps"
+type = "forbidden"
+source_modules = ["dortrader"]
+forbidden_modules = ["apps"]

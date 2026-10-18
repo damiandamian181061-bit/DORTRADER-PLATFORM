@@ -1,0 +1,45 @@
+{
+ "jsonrpc": "2.0",
+ "result": {
+  "timestamp": 1792351056239,
+  "state": "open",
+  "stats": {
+   "high": 535.0,
+   "low": 395.0,
+   "price_change": 21.5909,
+   "volume": 0.74,
+   "volume_usd": 298.14,
+   "volume_notional": 298.2
+  },
+  "greeks": {
+   "delta": -0.47439,
+   "gamma": 0.00021,
+   "vega": 20.89884,
+   "theta": -251.95767,
+   "rho": -1.6421
+  },
+  "index_price": 81088.28,
+  "instrument_name": "BTC_USDC-20OCT26-81000-P",
+  "last_price": 535.0,
+  "settlement_price": 449.5565245,
+  "min_price": 5.0,
+  "max_price": 3240.0,
+  "open_interest": 2.73,
+  "mark_price": 722.23,
+  "interest_rate": 0.0,
+  "estimated_delivery_price": 81088.28,
+  "best_ask_price": 735.0,
+  "best_bid_price": 695.0,
+  "mark_iv": 36.87,
+  "bid_iv": 35.57,
+  "ask_iv": 37.49,
+  "underlying_price": 81101.18,
+  "underlying_index": "BTC_USDC-20OCT26",
+  "best_ask_amount": 16.04,
+  "best_bid_amount": 0.8
+ },
+ "usIn": 1792351059212699,
+ "usOut": 1792351059212922,
+ "usDiff": 223,
+ "testnet": false
+}
