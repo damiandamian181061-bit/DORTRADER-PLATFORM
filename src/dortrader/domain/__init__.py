@@ -1,4 +1,5 @@
 from dortrader.domain.entities import (
+    Bar,
     ChainRow,
     ChainSnapshot,
     Instrument,
@@ -18,6 +19,7 @@ from dortrader.domain.types import (
 )
 
 __all__ = [
+    "Bar",
     "ChainRow",
     "ChainSnapshot",
     "Currency",

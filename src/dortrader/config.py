@@ -4,6 +4,7 @@ There are deliberately no private exchange credentials here: this phase only rea
 public market data. Invalid configuration fails at startup.
 """
 
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -48,6 +49,17 @@ class RecorderSettings(BaseModel):
     gap_factor: float = Field(default=2.5, gt=1)
 
 
+class BackfillSettings(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    instruments: tuple[str, ...] = ("BTC_USDC-PERPETUAL", "BTC-PERPETUAL")
+    step_seconds: tuple[int, ...] = (3600, 86_400)
+    vol_index_currency: str = "BTC"
+    history_start: datetime = datetime(2021, 1, 1, tzinfo=UTC)
+    max_candles_per_request: int = Field(default=5000, gt=0, le=5000)
+    refresh_seconds: float = Field(default=0.0, ge=0)  # 0 runs one pass and exits
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="DORTRADER_",
@@ -59,6 +71,7 @@ class Settings(BaseSettings):
 
     deribit: DeribitSettings = DeribitSettings()
     recorder: RecorderSettings = RecorderSettings()
+    backfill: BackfillSettings = BackfillSettings()
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     json_logs: bool = True
     # Supabase Postgres connection string; unused until the database layer lands.

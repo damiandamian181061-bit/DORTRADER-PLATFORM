@@ -64,6 +64,28 @@ class RawBookSummary(_Raw):
     creation_timestamp: int | None = None
 
 
+class RawChart(_Raw):
+    """get_tradingview_chart_data: parallel arrays, one entry per candle."""
+
+    status: str
+    ticks: list[int] = []
+    open: list[float] = []
+    high: list[float] = []
+    low: list[float] = []
+    close: list[float] = []
+    volume: list[float] = []
+
+
+class RawVolIndex(_Raw):
+    """get_volatility_index_data: rows of [timestamp ms, open, high, low, close]."""
+
+    data: list[list[float]]
+    continuation: int | None = None
+
+
+KNOWN_CHART_FIELDS = frozenset({*RawChart.model_fields, "cost"})
+KNOWN_VOL_INDEX_FIELDS = frozenset(RawVolIndex.model_fields)
+
 # Every field seen in live responses on 2026-10-18 (see tests/fixtures/deribit).
 KNOWN_INSTRUMENT_FIELDS = frozenset(
     {

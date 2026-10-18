@@ -19,3 +19,7 @@ def catalog_dir(data_dir: Path) -> Path:
 
 def events_dir(data_dir: Path) -> Path:
     return data_dir / "events"
+
+
+def bars_dir(data_dir: Path) -> Path:
+    return data_dir / "bars"

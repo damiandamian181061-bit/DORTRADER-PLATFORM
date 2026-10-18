@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from dortrader.domain import (
+    Bar,
     Instrument,
     OptionQuote,
     QualityFlag,
@@ -14,10 +15,15 @@ from dortrader.domain import (
     vol_from_percent,
 )
 from dortrader.market_data.deribit.models import (
+    KNOWN_CHART_FIELDS,
     KNOWN_INSTRUMENT_FIELDS,
     KNOWN_SUMMARY_FIELDS,
+    KNOWN_VOL_INDEX_FIELDS,
     RawBookSummary,
+    RawChart,
     RawInstrument,
+    RawVolIndex,
+    SchemaDriftError,
     parse_rows,
     unexpected_fields,
 )
@@ -131,3 +137,54 @@ def normalize_summary(
             )
         )
     return Parsed(quotes, unexpected_fields(selected, KNOWN_SUMMARY_FIELDS))
+
+
+def parse_chart(result: Mapping[str, Any], *, instrument: str, step_seconds: int) -> Parsed[Bar]:
+    """Candles from get_tradingview_chart_data. status "no_data" is an empty, valid answer."""
+    raw = parse_rows(RawChart, [result], "chart data")[0]
+    if raw.status == "no_data":
+        return Parsed([], unexpected_fields([result], KNOWN_CHART_FIELDS))
+    lengths = {len(a) for a in (raw.ticks, raw.open, raw.high, raw.low, raw.close, raw.volume)}
+    if len(lengths) != 1:
+        raise SchemaDriftError(f"chart data arrays have different lengths: {sorted(lengths)}")
+    bars = [
+        Bar(
+            instrument=instrument,
+            step_seconds=step_seconds,
+            start=ms_to_utc(ts),
+            open=o,
+            high=h,
+            low=lo,
+            close=c,
+            volume=v,
+        )
+        for ts, o, h, lo, c, v in zip(
+            raw.ticks, raw.open, raw.high, raw.low, raw.close, raw.volume, strict=True
+        )
+    ]
+    return Parsed(bars, unexpected_fields([result], KNOWN_CHART_FIELDS))
+
+
+def parse_vol_index(
+    result: Mapping[str, Any], *, name: str, step_seconds: int
+) -> tuple[Parsed[Bar], int | None]:
+    """DVOL candles plus the continuation value to page backwards (None when finished)."""
+    raw = parse_rows(RawVolIndex, [result], "volatility index")[0]
+    bars = []
+    for row in raw.data:
+        if len(row) != 5:
+            raise SchemaDriftError(f"volatility index row has {len(row)} values, expected 5")
+        ts, o, h, lo, c = row
+        bars.append(
+            Bar(
+                instrument=name,
+                step_seconds=step_seconds,
+                start=ms_to_utc(int(ts)),
+                open=o,
+                high=h,
+                low=lo,
+                close=c,
+            )
+        )
+    parsed = Parsed(bars, unexpected_fields([result], KNOWN_VOL_INDEX_FIELDS))
+    return parsed, raw.continuation

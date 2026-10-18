@@ -3,9 +3,11 @@ name = "dortrader"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "arch>=8.0.0",
     "fastapi>=0.146.0",
     "httpx>=0.28.1",
     "numpy>=2.5.4",
+    "pandas>=3.0.6",
     "pyarrow>=26.0.0",
     "pydantic-settings>=2.16.0",
     "scipy>=1.18.1",
@@ -82,6 +84,8 @@ forbidden_modules = [
     "dortrader.log",
     "dortrader.clock",
     "dortrader.replay",
+    "dortrader.volatility",
+    "dortrader.forecasting",
     "apps",
 ]
 
@@ -96,6 +100,8 @@ forbidden_modules = [
     "dortrader.log",
     "dortrader.clock",
     "dortrader.replay",
+    "dortrader.volatility",
+    "dortrader.forecasting",
     "apps",
 ]
 
@@ -116,6 +122,37 @@ name = "replay reads storage and domain only"
 type = "forbidden"
 source_modules = ["dortrader.replay"]
 forbidden_modules = ["dortrader.market_data", "dortrader.pricing", "apps"]
+
+[[tool.importlinter.contracts]]
+name = "volatility depends on domain only"
+type = "forbidden"
+source_modules = ["dortrader.volatility"]
+forbidden_modules = [
+    "dortrader.market_data",
+    "dortrader.storage",
+    "dortrader.pricing",
+    "dortrader.replay",
+    "dortrader.forecasting",
+    "dortrader.config",
+    "dortrader.log",
+    "dortrader.clock",
+    "apps",
+]
+
+[[tool.importlinter.contracts]]
+name = "forecasting uses domain and volatility only"
+type = "forbidden"
+source_modules = ["dortrader.forecasting"]
+forbidden_modules = [
+    "dortrader.market_data",
+    "dortrader.storage",
+    "dortrader.pricing",
+    "dortrader.replay",
+    "dortrader.config",
+    "dortrader.log",
+    "dortrader.clock",
+    "apps",
+]
 
 [[tool.importlinter.contracts]]
 name = "library code never imports apps"

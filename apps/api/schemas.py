@@ -64,3 +64,44 @@ class StatusResponse(BaseModel):
     recorded_from: datetime | None
     recorded_to: datetime | None
     recent_gaps: list[GapView]
+
+
+class VolPoint(BaseModel):
+    time: datetime
+    vol: float | None  # decimal annualized volatility; None where there is no value
+
+
+class RealizedSeries(BaseModel):
+    estimator: str
+    points: list[VolPoint]
+
+
+class RealizedVolResponse(BaseModel):
+    instrument: str
+    window_days: int
+    estimators: list[str]
+    series: list[RealizedSeries]
+    dvol: list[VolPoint]  # Deribit's 30-day implied vol index at the same times
+
+
+class ModelForecast(BaseModel):
+    model: str
+    vol: float
+
+
+class HorizonForecast(BaseModel):
+    horizon_hours: int
+    forecasts: list[ModelForecast]
+
+
+class LastRealized(BaseModel):
+    window_hours: int
+    vol: float | None
+
+
+class ForecastResponse(BaseModel):
+    instrument: str
+    as_of: datetime  # close of the last candle the models saw
+    last_realized: list[LastRealized]
+    dvol: float | None
+    horizons: list[HorizonForecast]

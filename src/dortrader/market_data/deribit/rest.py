@@ -21,6 +21,9 @@ from dortrader.domain import us_to_utc
 
 Sleep = Callable[[float], Awaitable[None]]
 TOO_MANY_REQUESTS = 10028
+# The two endpoints name the same candle sizes differently: seconds in, their strings out.
+CHART_RESOLUTIONS = {60: "1", 300: "5", 900: "15", 3600: "60", 86_400: "1D"}
+VOL_INDEX_RESOLUTIONS = {60: "60", 3600: "3600", 43_200: "43200", 86_400: "1D"}
 
 
 class DeribitError(Exception):
@@ -72,6 +75,32 @@ class DeribitRestClient:
 
     async def get_index_price(self, index_name: str) -> Envelope:
         return await self._call("get_index_price", {"index_name": index_name})
+
+    async def get_tradingview_chart_data(
+        self, instrument_name: str, step_seconds: int, start_ms: int, end_ms: int
+    ) -> Envelope:
+        return await self._call(
+            "get_tradingview_chart_data",
+            {
+                "instrument_name": instrument_name,
+                "resolution": CHART_RESOLUTIONS[step_seconds],
+                "start_timestamp": str(start_ms),
+                "end_timestamp": str(end_ms),
+            },
+        )
+
+    async def get_volatility_index_data(
+        self, currency: str, step_seconds: int, start_ms: int, end_ms: int
+    ) -> Envelope:
+        return await self._call(
+            "get_volatility_index_data",
+            {
+                "currency": currency,
+                "resolution": VOL_INDEX_RESOLUTIONS[step_seconds],
+                "start_timestamp": str(start_ms),
+                "end_timestamp": str(end_ms),
+            },
+        )
 
     async def _throttle(self, method: str) -> None:
         spacing = (

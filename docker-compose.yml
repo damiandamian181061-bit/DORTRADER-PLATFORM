@@ -6,3 +6,16 @@ services:
       DORTRADER_JSON_LOGS: "true"
     volumes:
       - ./data:/data
+
+  # Keeps the underlying candles and the DVOL index up to date for realized-vol work.
+  backfill:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "apps.worker.backfill"]
+    environment:
+      DORTRADER_JSON_LOGS: "true"
+      DORTRADER_BACKFILL__REFRESH_SECONDS: "21600"
+    healthcheck:
+      disable: true # the image healthcheck reads the recorder heartbeat
+    volumes:
+      - ./data:/data

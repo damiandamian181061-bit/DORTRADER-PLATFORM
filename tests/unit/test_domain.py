@@ -11,6 +11,7 @@ from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from dortrader.domain import (
+    Bar,
     ChainSnapshot,
     Instrument,
     Money,
@@ -167,10 +168,11 @@ def test_quote_json_round_trip(
         (Instrument, "instrument.schema.json"),
         (OptionQuote, "option_quote.schema.json"),
         (ChainSnapshot, "chain_snapshot.schema.json"),
+        (Bar, "bar.schema.json"),
     ],
 )
 def test_json_schema_snapshot(
-    model: type[Instrument | OptionQuote | ChainSnapshot], filename: str
+    model: type[Instrument | OptionQuote | ChainSnapshot | Bar], filename: str
 ) -> None:
     """Changing a domain contract must be deliberate: rerun with UPDATE_SNAPSHOTS=1."""
     path = SCHEMA_DIR / filename

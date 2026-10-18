@@ -126,3 +126,24 @@ class ChainSnapshot(FrozenModel):
     rows: tuple[ChainRow, ...]
     listed_without_quote: tuple[str, ...] = ()
     quotes_without_instrument: tuple[str, ...] = ()
+
+
+class Bar(FrozenModel):
+    """One OHLC candle starting at `start`. DVOL (an index) is stored the same way, no volume."""
+
+    instrument: str
+    step_seconds: Annotated[int, Field(gt=0)]
+    start: UtcDateTime
+    open: Annotated[float, Field(gt=0)]
+    high: Annotated[float, Field(gt=0)]
+    low: Annotated[float, Field(gt=0)]
+    close: Annotated[float, Field(gt=0)]
+    volume: NonNegativeFloat | None = None
+
+    @model_validator(mode="after")
+    def _high_not_below_low(self) -> "Bar":
+        # Only the one rule that cannot hold in real data. Open and close sitting outside
+        # [low, high] by rounding is recorded as received, not rejected.
+        if self.high < self.low:
+            raise ValueError("high is below low")
+        return self

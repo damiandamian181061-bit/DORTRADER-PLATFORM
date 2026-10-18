@@ -3,13 +3,17 @@
 import copy
 import hashlib
 import json
+import math
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from apps.worker.recorder import Recorder
 from dortrader.clock import ManualClock
 from dortrader.config import RecorderSettings
-from dortrader.domain import us_to_utc
+from dortrader.domain import Bar, us_to_utc
 from dortrader.market_data.deribit.rest import Envelope
 from dortrader.storage.layout import events_dir
 from dortrader.storage.parquet_archive import read_archive
@@ -78,3 +82,34 @@ class Rig:
         self.recorder.close()
         table = read_archive(events_dir(self.root), schema_version=EVENTS_VERSION)
         return [{**e, "detail": json.loads(e["detail"])} for e in table.to_pylist()]
+
+
+def synthetic_hourly_bars(
+    instrument: str,
+    count: int,
+    *,
+    first: datetime = datetime(2026, 1, 1, tzinfo=UTC),
+    annual_vol: float = 0.5,
+    seed: int = 0,
+) -> list[Bar]:
+    """Hourly candles from a random walk with a calm stretch followed by a stormy one."""
+    rng = np.random.default_rng(seed)
+    scale = np.where(np.arange(count) < count * 0.8, 1.0, 2.0) * annual_vol / math.sqrt(8760)
+    closes = 80_000 * np.exp(np.cumsum(rng.standard_normal(count) * scale))
+    previous, bars = 80_000.0, []
+    for i, close in enumerate(closes):
+        wiggle = abs(rng.standard_normal()) * scale[i] * close
+        bars.append(
+            Bar(
+                instrument=instrument,
+                step_seconds=3600,
+                start=first + timedelta(hours=i),
+                open=previous,
+                high=max(previous, close) + wiggle,
+                low=min(previous, close) - wiggle,
+                close=float(close),
+                volume=1.0,
+            )
+        )
+        previous = float(close)
+    return bars
