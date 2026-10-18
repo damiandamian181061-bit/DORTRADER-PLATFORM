@@ -18,6 +18,30 @@ Out of scope here: strategy generation, backtester, risk gateway, ML challengers
 - M0 skeleton exists on `main` and is **uncommitted**: uv project, FastAPI `GET /api/health`, Vite + React + TypeScript + Tailwind page, Supabase migrations folder (placeholder), CI workflow.
 - Step 0 of this plan is to commit M0 on a branch (`m0-skeleton`) so everything below builds on a recorded baseline.
 
+## 0.1 Implementation status (updated 2026-10-18)
+
+| Item | Status |
+|---|---|
+| F1 package restructure, import-linter | Done (5 contracts) |
+| F2 domain schemas | Partly: `Instrument`, `OptionQuote`, `QualityFlag`, `Money`, value types. `BookLevel`, `OrderBook`, `ChainSnapshot` wait for D4 and D6 |
+| F3 config, logging, clock | Done |
+| F4 test harness, CI | Partly: markers, network blocked, coverage floor 95%, lock check, import-linter, pip-audit, npm audit. Postgres service container and container builds wait for F5 |
+| D0 spike and fixtures | Done (fixtures, WebSocket probe). Observing the 19 Oct 08:00 UTC expiry not done |
+| D1 REST client, catalog, normalizer | Done. Catalog is kept as Parquet snapshots until F5 |
+| D2 Parquet archive | Done, including a kill-the-writer crash test |
+| D3 Tier 1 recorder | Done and run live. **Not yet running 24/7**: it needs a host (decision D-1) |
+| P1 Black-76 and Greeks | Done |
+| P2 implied vol solver | Done |
+| P3 reference validation | Done for QuantLib, properties, finite differences and Deribit replication. The report over recorded chains needs D3 data |
+| F5, F6, D4 to D9, P4 to P6, V1 to V7 | Not started |
+
+Deviations from the plan as written:
+
+- The raw archive stores the BTC rows of each response as JSON plus the sha256 of the full response body, not the 1.6 MB original body, which would be about 4.6 GB per day at 30 s.
+- Clock offset comes from `get_index_price`, not the book summary (see measurements below).
+- The IV solver is vectorized safeguarded Newton with bisection fallback, not Brent. Statuses: `OK`, `INVALID_INPUT`, `BELOW_INTRINSIC`, `AT_INTRINSIC`, `ABOVE_UPPER_BOUND`, `NO_BRACKET`, `NOT_CONVERGED`.
+- `config`, `log` and `clock` are single modules, not packages.
+
 ## 1. Facts verified against Deribit on 2026-10-18
 
 I read the official docs and made read-only public calls (no keys). Treat these as the ground truth for design, and re-verify in D0 because the exchange can change.
@@ -59,13 +83,34 @@ The 0.03% price gap is consistent with `mark_iv` being rounded to two decimals (
 - Underlying history is deep: `get_tradingview_chart_data` gave daily candles for `BTC-PERPETUAL` back to 2021-04-27 and `BTC_USDC-PERPETUAL` back to 2022-03-09, plus hourly and 1-minute candles for recent windows. A request returns at most about 5,000 candles, so paginate in windows.
 - DVOL (`get_volatility_index_data`, BTC) works: hourly for 30 days, daily back to at least 2024 (1,000 points per call, paged with `continuation`). **There is no DVOL for USDC.** `get_historical_volatility` for BTC returned about 16 days of hourly points; the USDC variant returned an implausible value (0.42), so **do not use it**. Compute realized vol ourselves.
 
-### Limits and streaming (from docs, not yet exercised)
+### Limits and streaming
+
+From the docs:
 
 - `get_instruments` is expensive: about 1 call per second sustained, burst 50. Do not poll it.
 - Other non-matching requests: 500 credits each, 50,000 pool, 10,000 credits/s refill (about 20 requests/s, burst 100). **Public unauthenticated requests are limited per IP, with no documented numbers.** `too_many_requests` (10028) terminates the session.
 - 32 connections per IP. One `public/subscribe` can carry up to 500 channels; `subscribe` costs 3,000 credits (about 3.3/s, burst 10). Heartbeat minimum 10 s, and the client must answer `test_request` with `public/test` or be disconnected. HTTP connections expire after 15 minutes.
-- Channels worth using: `ticker.{instrument}.{interval}` (full payload with Greeks, bid/ask IV), `incremental_ticker.{instrument}` (changed fields only, at most 1 per second), `markprice.options.{index_name}` (whole-chain mark and mark IV in one channel), `quote.{instrument}`, `book.{instrument}.{group}.{depth}.{interval}` (depth 1, 10 or 20, with `change_id` and `prev_change_id`), `trades.option.{currency}.{interval}`, `instrument.creation` and `instrument.state`, `deribit_volatility_index`. The `raw` interval needs authentication; public connections use `100ms` or `agg2`.
-- Unverified: the exact channel and index names for USDC (for example whether the chain mark-price channel is `markprice.options.btc_usdc`), and the per-connection subscription ceiling. D0 settles these.
+
+Measured on 2026-10-18 with an unauthenticated WebSocket probe (`scripts/probe_deribit_ws.py`, 60 s per run):
+
+| Channel | Result |
+|---|---|
+| `ticker.{inst}.raw` | Rejected without authentication (error 13778) |
+| `ticker.{inst}.100ms`, `ticker.{inst}.agg2` | Work. About 0.8 KB per message, roughly 15 messages per minute on a busy option |
+| `incremental_ticker.{inst}` | Works. The first message is a full `snapshot`, later ones carry changes |
+| `quote.{inst}` | Works. Best bid and ask only, about 0.3 KB |
+| `book.{inst}.none.10.100ms`, `...none.10.agg2` | Work. Top-10 snapshots with `change_id`, about 0.4 KB |
+| `book.{inst}.agg2` | Works. Incremental `new` and `delete` entries |
+| `markprice.options.btc_usdc` | Works. Mark price and IV for the whole chain (about 600 instruments) in one message of about 60 KB roughly every 1.4 s, around 3.7 GB per day uncompressed |
+| `deribit_price_index.btc_usdc`, `estimated_expiration_price.btc_usdc` | Work. Under 1 message per second |
+| `instrument.state.option.USDC`, `instrument.state.any.USDC`, `instrument.creation.option.USDC`, `trades.option.USDC.100ms` and `.agg2` | Subscribe succeeds but nothing arrived in 60 s. Quiet window or low activity; recheck over a longer run |
+
+Other measurements:
+
+- **The book summary is cached server-side.** Its `usOut` lags real time by 0.5 to 1.8 s, and across 8,940 recorded rows the per-row `creation_timestamp` lags our receipt by a median of 1.1 s and a maximum of 2.2 s. Do not use the summary for clock synchronization. `get_index_price` and `get_time` give a stable offset (the local clock was about 130 ms behind the exchange).
+- **Theta near expiry.** Deribit's theta equals our per-day theta times `min(1, days left)`, capped at minus the mark price (checked on options 0.52 days from expiry).
+- **Ticker price and forward are not simultaneous.** Gaps between `mark_price` and the price implied by `underlying_price` and `mark_iv` were up to 2.4 bps of forward in the captured tickers.
+- **Windows path length.** A deep data directory (over about 260 characters) made pyarrow writes fail. Keep `DORTRADER_RECORDER__DATA_DIR` short.
 
 ### Not verified
 
