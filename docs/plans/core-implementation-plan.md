@@ -35,7 +35,7 @@ Out of scope here: strategy generation, backtester, risk gateway, ML challengers
 | P3 reference validation | Done for QuantLib, properties, finite differences and Deribit replication. The report over recorded chains needs D3 data |
 | D4 point-in-time replay | Done: `ChainSnapshot`, shared reducer, `ChainStore.as_of`, equivalence and determinism tests. The materialized 1-minute snapshot grid is deferred (reading the normalized archive directly is fast enough) |
 | P4 chain pricing and arbitrage flags | Done: `price_chain`, monotonicity, butterfly and parity flags. Preliminary report in `docs/validation/chain-vs-deribit.md` (about 100 s of data) |
-| D9 / P5 chain view | Done for the chain: `GET /api/chain`, `/api/instruments`, `/api/status` and the web chain page. The standalone pricing calculator and the data-quality coverage view are not built |
+| D9 / P5 web app | Done: chain page, pricing calculator (`POST /api/price`), and a Data tab with recorder status, candle coverage and charts, the event log and the instrument catalog (`/api/bars`, `/api/bars/coverage`, `/api/events`, `/api/instruments`) |
 | D8 candle and DVOL backfill | Done: `apps/worker/backfill.py`, `BarStore`, compose service. Run live: no gaps in any series (see History) |
 | V1 realized volatility | Done: close-to-close, Parkinson, Garman-Klass, Rogers-Satchell, Yang-Zhang, daily realized variance, forward realized vol |
 | V5 forecast baselines and evaluation | Done: naive, trailing 30 days, EWMA (two), GARCH, GJR-GARCH, HAR-RV, scored out of sample with a leakage test. Report in `docs/validation/vol-forecast-baselines.md` |
@@ -51,6 +51,7 @@ Deviations from the plan as written:
 - Chain pricing reports the bid-to-ask IV range as the executable range of fair vol. The half-tick interval (`implied_vol_interval`) exists but is not used there, because bid and ask are exact quotes and a mark price has no tick.
 - A new `dortrader.replay` package holds the reducer and `ChainStore`, with its own layering contract; the recorder keeps a live chain state with the same reducer.
 - The recorder's flush interval default is 60 s, not 300 s, so a hard crash loses at most a minute.
+- Downtime between recorder runs is logged as a gap on the next start, measured from the heartbeat file the previous run left (found while testing the Data tab: gaps were only detected inside one process).
 - Candles are stored by `BarStore` as one upserted Parquet file per series and month with no manifest, not in the append-only archive: they are re-fetchable and the last candle is still forming when fetched.
 - Polars was not adopted; NumPy covers the estimators and `forecasting` uses pandas only through `arch`.
 - Plotly is loaded with a small wrapper around `plotly.js-basic-dist-min`, not `react-plotly.js`, to avoid its React 19 peer-dependency problems.

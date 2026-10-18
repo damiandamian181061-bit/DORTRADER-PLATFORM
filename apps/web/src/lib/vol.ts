@@ -57,11 +57,17 @@ export type Evaluation = {
 }
 
 export function fetchRealized(
-  params: { windowDays: number; days: number; estimators: string[] },
+  params: {
+    instrument: string
+    windowDays: number
+    days: number
+    estimators: string[]
+  },
   fetchImpl: Fetch = fetch,
   signal?: AbortSignal,
 ): Promise<RealizedVol> {
   const query = new URLSearchParams({
+    instrument: params.instrument,
     window_days: String(params.windowDays),
     days: String(params.days),
   })
@@ -71,10 +77,12 @@ export function fetchRealized(
 }
 
 export function fetchForecast(
+  instrument: string,
   fetchImpl: Fetch = fetch,
   signal?: AbortSignal,
 ): Promise<Forecast> {
-  return getJson<Forecast>('/api/vol/forecast', fetchImpl, signal)
+  const query = new URLSearchParams({ instrument })
+  return getJson<Forecast>(`/api/vol/forecast?${query}`, fetchImpl, signal)
 }
 
 export function fetchEvaluation(

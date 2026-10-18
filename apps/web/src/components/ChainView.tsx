@@ -1,14 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   fetchChain,
   fetchStatus,
+  flagLabel,
   fmtUtc,
   isoToUtcInput,
+  summarizeChain,
   utcInputToIso,
 } from '../lib/chain'
 import type { Chain, Status } from '../lib/chain'
+import type { ContractPick } from '../lib/pricing'
 import { ExpiryTable } from './ExpiryTable'
 import { StatusStrip } from './StatusStrip'
+import { Card, Note } from './ui'
 
 const STATUS_REFRESH_MS = 30_000
 
@@ -16,7 +20,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'request failed'
 }
 
-export function ChainView() {
+export function ChainView({
+  onPrice,
+}: {
+  onPrice: (pick: ContractPick) => void
+}) {
   const [timeInput, setTimeInput] = useState('') // empty means "latest recorded"
   const [expiries, setExpiries] = useState(3)
   const [chain, setChain] = useState<Chain | null>(null)
@@ -73,6 +81,7 @@ export function ChainView() {
     setExpiries(value)
   }
 
+  const summary = useMemo(() => (chain ? summarizeChain(chain) : null), [chain])
   const min = status?.recorded_from
     ? isoToUtcInput(status.recorded_from)
     : undefined
@@ -143,8 +152,13 @@ export function ChainView() {
 
       {chain && (
         <div className={loading ? 'space-y-8 opacity-60' : 'space-y-8'}>
+          {summary && <ChainSummaryCards summary={summary} />}
           {chain.expiries.map((expiry) => (
-            <ExpiryTable key={expiry.expiration} expiry={expiry} />
+            <ExpiryTable
+              key={expiry.expiration}
+              expiry={expiry}
+              onPrice={onPrice}
+            />
           ))}
           {(chain.listed_without_quote > 0 ||
             chain.quotes_without_instrument > 0) && (
@@ -155,6 +169,60 @@ export function ChainView() {
             </p>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+function ChainSummaryCards({
+  summary,
+}: {
+  summary: ReturnType<typeof summarizeChain>
+}) {
+  const flags = Object.entries(summary.flagCounts).sort((a, b) => b[1] - a[1])
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Card
+          title="Contracts"
+          value={String(summary.contracts)}
+          hint="calls and puts shown"
+        />
+        <Card
+          title="With a solved vol"
+          value={`${summary.withVol} / ${summary.contracts}`}
+          hint="vol from the mark price"
+        />
+        <Card
+          title="Flagged"
+          value={String(summary.flagged)}
+          hint={
+            flags.length === 0 ? 'no flags' : `${flags.length} kinds, see below`
+          }
+        />
+        <Card
+          title="Our IV vs Deribit's"
+          value={
+            summary.otmMedianAbsDiff === null
+              ? '–'
+              : `${summary.otmMedianAbsDiff.toFixed(2)} pts`
+          }
+          hint={
+            summary.otmMaxAbsDiff === null
+              ? 'nothing to compare'
+              : `median gap, out of the money (max ${summary.otmMaxAbsDiff.toFixed(2)}, n ${summary.otmCompared})`
+          }
+        />
+      </div>
+      {flags.length > 0 && (
+        <Note>
+          Flags:{' '}
+          {flags
+            .map(([flag, count]) => `${flagLabel(flag)} (${count})`)
+            .join(', ')}
+          . Hover a flag count in the table for the contract&apos;s own flags.
+          Click a mark price to open it in the pricing calculator.
+        </Note>
       )}
     </div>
   )

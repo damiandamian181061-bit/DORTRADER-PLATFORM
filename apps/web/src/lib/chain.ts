@@ -178,3 +178,61 @@ export const SERIOUS_FLAGS = new Set([
 export function hasSeriousFlag(flags: string[]): boolean {
   return flags.some((flag) => SERIOUS_FLAGS.has(flag))
 }
+
+export type ChainSummary = {
+  contracts: number
+  withVol: number // contracts whose implied vol we could solve from the mark price
+  flagged: number // contracts carrying at least one flag
+  flagCounts: Record<string, number>
+  otmCompared: number // out-of-the-money contracts with a Deribit IV to compare to
+  otmMedianAbsDiff: number | null // vol points
+  otmMaxAbsDiff: number | null
+}
+
+/** Counts and the IV agreement with Deribit for what the chain page is showing. */
+export function summarizeChain(chain: Chain): ChainSummary {
+  const flagCounts: Record<string, number> = {}
+  const diffs: number[] = []
+  let contracts = 0
+  let withVol = 0
+  let flagged = 0
+  for (const expiry of chain.expiries) {
+    for (const row of expiry.strikes) {
+      for (const [side, contract] of [
+        ['call', row.call],
+        ['put', row.put],
+      ] as const) {
+        if (contract === null) continue
+        contracts += 1
+        if (contract.mark_iv !== null) withVol += 1
+        if (contract.flags.length > 0) flagged += 1
+        for (const flag of contract.flags)
+          flagCounts[flag] = (flagCounts[flag] ?? 0) + 1
+        const otm =
+          expiry.forward !== null &&
+          (side === 'call'
+            ? row.strike > expiry.forward
+            : row.strike < expiry.forward)
+        if (otm && contract.iv_diff_points !== null)
+          diffs.push(Math.abs(contract.iv_diff_points))
+      }
+    }
+  }
+  diffs.sort((a, b) => a - b)
+  const middle = Math.floor(diffs.length / 2)
+  const median =
+    diffs.length === 0
+      ? null
+      : diffs.length % 2
+        ? diffs[middle]
+        : (diffs[middle - 1] + diffs[middle]) / 2
+  return {
+    contracts,
+    withVol,
+    flagged,
+    flagCounts,
+    otmCompared: diffs.length,
+    otmMedianAbsDiff: median,
+    otmMaxAbsDiff: diffs.length === 0 ? null : diffs[diffs.length - 1],
+  }
+}

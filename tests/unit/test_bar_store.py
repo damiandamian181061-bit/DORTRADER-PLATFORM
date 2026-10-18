@@ -112,3 +112,27 @@ def test_find_gaps_reports_holes_without_filling_them() -> None:
     assert len(gaps) == 1
     assert gaps[0].after == starts[1] and gaps[0].before == starts[2] and gaps[0].missing == 2
     assert find_gaps(starts[:2], HOUR) == [] and find_gaps([], HOUR) == []
+
+
+def test_series_lists_stored_instruments_and_candle_sizes(tmp_path: Path) -> None:
+    store = BarStore(tmp_path)
+    assert store.series() == []
+    store.upsert(
+        [bar(T0, instrument="B"), bar(T0, instrument="A"), bar(T0, instrument="A", step=60)]
+    )
+
+    assert store.series() == [("A", 60), ("A", HOUR), ("B", HOUR)]
+
+
+def test_coverage_counts_candles_and_holes_across_months(tmp_path: Path) -> None:
+    store = BarStore(tmp_path)
+    bars = [b for b in hourly(10) if b.start != T0 + timedelta(hours=4)]  # one hour missing
+    bars = [b for b in bars if b.start != T0 + timedelta(hours=5)]  # and the next: one hole of two
+    store.upsert(bars)
+
+    coverage = store.coverage("X", HOUR)
+
+    assert coverage is not None
+    assert (coverage.first, coverage.last) == (bars[0].start, bars[-1].start)
+    assert (coverage.candles, coverage.gaps, coverage.missing) == (8, 1, 2)
+    assert store.coverage("nope", HOUR) is None

@@ -129,18 +129,19 @@ describe('api client', () => {
 
     await fetchRealized(
       {
+        instrument: 'BTC-PERPETUAL',
         windowDays: 30,
         days: 365,
         estimators: ['close_to_close', 'parkinson'],
       },
       fake,
     )
-    await fetchForecast(fake)
+    await fetchForecast('BTC-PERPETUAL', fake)
     await fetchEvaluation(fake)
 
     expect(urls).toEqual([
-      '/api/vol/realized?window_days=30&days=365&estimators=close_to_close&estimators=parkinson',
-      '/api/vol/forecast',
+      '/api/vol/realized?instrument=BTC-PERPETUAL&window_days=30&days=365&estimators=close_to_close&estimators=parkinson',
+      '/api/vol/forecast?instrument=BTC-PERPETUAL',
       '/api/vol/evaluation',
     ])
   })

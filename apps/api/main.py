@@ -1,16 +1,28 @@
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 
 from apps.api.chain_view import build_chain_response
+from apps.api.data_view import (
+    NoBars,
+    build_bars,
+    build_coverage,
+    instrument_view,
+    read_events,
+)
+from apps.api.price_view import PriceRequest, PriceResponse, calculate
 from apps.api.schemas import (
+    BarsResponse,
     ChainResponse,
+    EventView,
     ForecastResponse,
     GapView,
+    InstrumentView,
     RealizedVolResponse,
+    SeriesCoverage,
     StatusResponse,
 )
 from apps.api.vol_view import (
@@ -22,7 +34,7 @@ from apps.api.vol_view import (
 )
 from dortrader.clock import Clock, SystemClock
 from dortrader.config import get_settings
-from dortrader.domain import ChainSnapshot, Instrument
+from dortrader.domain import ChainSnapshot
 from dortrader.forecasting import EvaluationReport
 from dortrader.replay import ChainStore, NoRecordedData
 from dortrader.storage.bars import BarStore
@@ -128,8 +140,8 @@ def chain(
 @app.get("/api/instruments")
 def instruments(
     data_dir: DataDir, at: Annotated[datetime | None, Query()] = None
-) -> list[Instrument]:
-    return [row.instrument for row in _snapshot(data_dir, at).rows]
+) -> list[InstrumentView]:
+    return [instrument_view(row.instrument) for row in _snapshot(data_dir, at).rows]
 
 
 def _candles(data_dir: Path, instrument: str):  # type: ignore[no-untyped-def]
@@ -189,3 +201,39 @@ def vol_evaluation(data_dir: DataDir) -> EvaluationReport:
         raise HTTPException(
             404, "no forecast evaluation yet; run scripts/evaluate_vol_forecasts.py"
         ) from error
+
+
+@app.post("/api/price")
+def price(request: PriceRequest) -> PriceResponse:
+    return calculate(request)
+
+
+@app.get("/api/bars/coverage")
+def bars_coverage(data_dir: DataDir) -> list[SeriesCoverage]:
+    return build_coverage(BarStore(bars_dir(data_dir)))
+
+
+@app.get("/api/bars")
+def bars(
+    data_dir: DataDir,
+    instrument: Annotated[str, Query()] = "BTC_USDC-PERPETUAL",
+    step_seconds: Annotated[int, Query(ge=60)] = 3600,
+    days: Annotated[int, Query(ge=1, le=4000)] = 90,
+) -> BarsResponse:
+    try:
+        return build_bars(BarStore(bars_dir(data_dir)), instrument, step_seconds, days)
+    except NoBars as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@app.get("/api/events")
+def events(
+    data_dir: DataDir,
+    clock: Now,
+    kind: Annotated[
+        Literal["gap", "error", "schema_drift", "catalog_change"] | None, Query()
+    ] = None,
+    days: Annotated[int, Query(ge=1, le=90)] = 7,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+) -> list[EventView]:
+    return read_events(data_dir, clock.now(), days=days, kind=kind, limit=limit)
