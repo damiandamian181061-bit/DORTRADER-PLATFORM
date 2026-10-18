@@ -23,6 +23,10 @@ cat data/_heartbeat.json           # last good cycle time and quote count
 
 The healthcheck fails when no cycle succeeded for three poll intervals. `restart: unless-stopped` brings the container back after a crash or reboot, and on start the recorder settles any file a crash left half-written.
 
+## Candle backfill
+
+`docker compose up -d` also starts a `backfill` service. It downloads hourly and daily candles for `BTC_USDC-PERPETUAL` and `BTC-PERPETUAL` and the DVOL index (BTC) back to 2021, then refreshes every six hours. The first pass takes a couple of minutes. Check it with `docker compose logs backfill`; each series logs its candle count, first and last time, and any gaps. Candles land under `data/bars/` and can be rebuilt at any time, so they do not need backing up.
+
 ## Data
 
 Parquet files land under `data/` (`raw/`, `normalized/`, `catalog/`, `events/`). A finished file never changes, so it is safe to copy while the recorder runs. Check growth with `du -sh data` after a day; size has not been measured yet.

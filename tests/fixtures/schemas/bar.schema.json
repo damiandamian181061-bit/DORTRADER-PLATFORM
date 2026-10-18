@@ -1,0 +1,64 @@
+{
+  "additionalProperties": false,
+  "description": "One OHLC candle starting at `start`. DVOL (an index) is stored the same way, no volume.",
+  "properties": {
+    "close": {
+      "exclusiveMinimum": 0,
+      "title": "Close",
+      "type": "number"
+    },
+    "high": {
+      "exclusiveMinimum": 0,
+      "title": "High",
+      "type": "number"
+    },
+    "instrument": {
+      "title": "Instrument",
+      "type": "string"
+    },
+    "low": {
+      "exclusiveMinimum": 0,
+      "title": "Low",
+      "type": "number"
+    },
+    "open": {
+      "exclusiveMinimum": 0,
+      "title": "Open",
+      "type": "number"
+    },
+    "start": {
+      "format": "date-time",
+      "title": "Start",
+      "type": "string"
+    },
+    "step_seconds": {
+      "exclusiveMinimum": 0,
+      "title": "Step Seconds",
+      "type": "integer"
+    },
+    "volume": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Volume"
+    }
+  },
+  "required": [
+    "instrument",
+    "step_seconds",
+    "start",
+    "open",
+    "high",
+    "low",
+    "close"
+  ],
+  "title": "Bar",
+  "type": "object"
+}

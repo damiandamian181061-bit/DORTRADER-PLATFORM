@@ -6,15 +6,31 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Query
 
 from apps.api.chain_view import build_chain_response
-from apps.api.schemas import ChainResponse, GapView, StatusResponse
+from apps.api.schemas import (
+    ChainResponse,
+    ForecastResponse,
+    GapView,
+    RealizedVolResponse,
+    StatusResponse,
+)
+from apps.api.vol_view import (
+    DVOL,
+    NoSeries,
+    build_realized_response,
+    cached_forecast,
+    load_candles,
+)
 from dortrader.clock import Clock, SystemClock
 from dortrader.config import get_settings
 from dortrader.domain import ChainSnapshot, Instrument
+from dortrader.forecasting import EvaluationReport
 from dortrader.replay import ChainStore, NoRecordedData
+from dortrader.storage.bars import BarStore
 from dortrader.storage.heartbeat import read_heartbeat
-from dortrader.storage.layout import events_dir
+from dortrader.storage.layout import bars_dir, events_dir
 from dortrader.storage.parquet_archive import NoDataError, read_archive
 from dortrader.storage.tables import EVENTS_VERSION
+from dortrader.volatility.realized import Estimator
 
 app = FastAPI(title="DORTRADER API")
 
@@ -114,3 +130,62 @@ def instruments(
     data_dir: DataDir, at: Annotated[datetime | None, Query()] = None
 ) -> list[Instrument]:
     return [row.instrument for row in _snapshot(data_dir, at).rows]
+
+
+def _candles(data_dir: Path, instrument: str):  # type: ignore[no-untyped-def]
+    store = BarStore(bars_dir(data_dir))
+    try:
+        return load_candles(store, data_dir, instrument), store
+    except NoSeries as error:
+        raise HTTPException(404, str(error)) from error
+
+
+def _dvol(store: BarStore, data_dir: Path):  # type: ignore[no-untyped-def]
+    try:
+        return load_candles(store, data_dir, DVOL)
+    except NoSeries:
+        return None
+
+
+@app.get("/api/vol/realized")
+def realized_vol(
+    data_dir: DataDir,
+    instrument: Annotated[str, Query()] = "BTC_USDC-PERPETUAL",
+    estimators: Annotated[list[Estimator] | None, Query()] = None,
+    window_days: Annotated[int, Query(ge=2, le=180)] = 30,
+    days: Annotated[int, Query(ge=1, le=2000)] = 365,
+) -> RealizedVolResponse:
+    candles, store = _candles(data_dir, instrument)
+    try:
+        return build_realized_response(
+            candles,
+            _dvol(store, data_dir),
+            instrument=instrument,
+            estimators=estimators or [Estimator.CLOSE_TO_CLOSE, Estimator.YANG_ZHANG],
+            window_days=window_days,
+            days=days,
+        )
+    except NoSeries as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@app.get("/api/vol/forecast")
+def vol_forecast(
+    data_dir: DataDir, instrument: Annotated[str, Query()] = "BTC_USDC-PERPETUAL"
+) -> ForecastResponse:
+    candles, store = _candles(data_dir, instrument)
+    try:
+        return cached_forecast(candles, _dvol(store, data_dir), instrument=instrument)
+    except NoSeries as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@app.get("/api/vol/evaluation")
+def vol_evaluation(data_dir: DataDir) -> EvaluationReport:
+    path = data_dir / "evaluation" / "vol_forecasts.json"
+    try:
+        return EvaluationReport.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise HTTPException(
+            404, "no forecast evaluation yet; run scripts/evaluate_vol_forecasts.py"
+        ) from error

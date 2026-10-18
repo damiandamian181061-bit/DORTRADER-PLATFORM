@@ -1,3 +1,6 @@
+import { getJson } from './api'
+import type { Fetch } from './api'
+
 export type Contract = {
   instrument_name: string
   bid: number | null
@@ -53,27 +56,6 @@ export type Status = {
   recorded_from: string | null
   recorded_to: string | null
   recent_gaps: Gap[]
-}
-
-type Fetch = typeof fetch
-
-async function getJson<T>(
-  url: string,
-  fetchImpl: Fetch,
-  signal?: AbortSignal,
-): Promise<T> {
-  const response = await fetchImpl(url, { signal })
-  if (!response.ok) {
-    let detail = `request failed: ${response.status}`
-    try {
-      const body = (await response.json()) as { detail?: unknown }
-      if (typeof body.detail === 'string') detail = body.detail
-    } catch {
-      // keep the status-based message
-    }
-    throw new Error(detail)
-  }
-  return (await response.json()) as T
 }
 
 export function fetchChain(

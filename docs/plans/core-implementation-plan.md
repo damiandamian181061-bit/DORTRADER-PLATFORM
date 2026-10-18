@@ -36,7 +36,11 @@ Out of scope here: strategy generation, backtester, risk gateway, ML challengers
 | D4 point-in-time replay | Done: `ChainSnapshot`, shared reducer, `ChainStore.as_of`, equivalence and determinism tests. The materialized 1-minute snapshot grid is deferred (reading the normalized archive directly is fast enough) |
 | P4 chain pricing and arbitrage flags | Done: `price_chain`, monotonicity, butterfly and parity flags. Preliminary report in `docs/validation/chain-vs-deribit.md` (about 100 s of data) |
 | D9 / P5 chain view | Done for the chain: `GET /api/chain`, `/api/instruments`, `/api/status` and the web chain page. The standalone pricing calculator and the data-quality coverage view are not built |
-| F5, F6, D5 to D8, P6, V1 to V7 | Not started |
+| D8 candle and DVOL backfill | Done: `apps/worker/backfill.py`, `BarStore`, compose service. Run live: no gaps in any series (see History) |
+| V1 realized volatility | Done: close-to-close, Parkinson, Garman-Klass, Rogers-Satchell, Yang-Zhang, daily realized variance, forward realized vol |
+| V5 forecast baselines and evaluation | Done: naive, trailing 30 days, EWMA (two), GARCH, GJR-GARCH, HAR-RV, scored out of sample with a leakage test. Report in `docs/validation/vol-forecast-baselines.md` |
+| V7 volatility page | Partly: realized vs DVOL chart, forecast table and evaluation table, plus `/api/vol/*`. Smile, term structure and surface charts wait for V2 to V4 |
+| F5, F6, D5 to D7, P6, V2 to V4, V6 | Not started |
 
 Deviations from the plan as written:
 
@@ -47,6 +51,10 @@ Deviations from the plan as written:
 - Chain pricing reports the bid-to-ask IV range as the executable range of fair vol. The half-tick interval (`implied_vol_interval`) exists but is not used there, because bid and ask are exact quotes and a mark price has no tick.
 - A new `dortrader.replay` package holds the reducer and `ChainStore`, with its own layering contract; the recorder keeps a live chain state with the same reducer.
 - The recorder's flush interval default is 60 s, not 300 s, so a hard crash loses at most a minute.
+- Candles are stored by `BarStore` as one upserted Parquet file per series and month with no manifest, not in the append-only archive: they are re-fetchable and the last candle is still forming when fetched.
+- Polars was not adopted; NumPy covers the estimators and `forecasting` uses pandas only through `arch`.
+- Plotly is loaded with a small wrapper around `plotly.js-basic-dist-min`, not `react-plotly.js`, to avoid its React 19 peer-dependency problems.
+- Two volatility findings from the first real evaluation: (1) at the 24-hour horizon every model beat the naive last-window forecast with a clear margin, with HAR-RV and DVOL best; at 7 and 30 days intervals are wide (52 and 12 non-overlapping forecasts) and only DVOL and EWMA at 30 days cleared the bar. (2) Gaussian GARCH and GJR-GARCH read 13 to 33 vol points too high: heavy-tailed hourly returns give a fitted long-run volatility of 76 against 45 realized. A Student-t variant fitted a persistence of 1.0, so it was not added.
 
 ## 1. Facts verified against Deribit on 2026-10-18
 
@@ -86,8 +94,12 @@ The 0.03% price gap is consistent with `mark_iv` being rounded to two decimals (
 
 - Public trade history is shallow. `get_last_trades_by_currency_and_time` returned data for the last day and **nothing for any one-day window ending 1 to 365 days ago**. `get_last_trades_by_instrument` returned nothing for an instrument that had a `last_price`.
 - There is no order-book history endpoint. **Chain history only exists if we record it.** A paid vendor or Deribit data product could backfill; not verified (see decision D-5).
-- Underlying history is deep: `get_tradingview_chart_data` gave daily candles for `BTC-PERPETUAL` back to 2021-04-27 and `BTC_USDC-PERPETUAL` back to 2022-03-09, plus hourly and 1-minute candles for recent windows. A request returns at most about 5,000 candles, so paginate in windows.
-- DVOL (`get_volatility_index_data`, BTC) works: hourly for 30 days, daily back to at least 2024 (1,000 points per call, paged with `continuation`). **There is no DVOL for USDC.** `get_historical_volatility` for BTC returned about 16 days of hourly points; the USDC variant returned an implausible value (0.42), so **do not use it**. Compute realized vol ourselves.
+- Underlying history is deep: `get_tradingview_chart_data` returns at most about 5,000 candles per call, so the backfill walks windows. Measured by the live backfill on 2026-10-18, all with **zero gaps**:
+  - `BTC_USDC-PERPETUAL`: 40,424 hourly candles from 2022-03-09 13:00 UTC, 1,685 daily from 2022-03-09.
+  - `BTC-PERPETUAL`: 50,805 hourly candles from the backfill start of 2021-01-01 (it goes earlier), 2,118 daily from 2020-12-31.
+  - DVOL (BTC): 48,837 hourly points and 2,035 daily points, both from 2021-03-24.
+  - Daily candles start at **08:00 UTC**, not midnight; hourly candles start on the hour.
+- DVOL (`get_volatility_index_data`, BTC) works (1,000 points per call, paged with `continuation`). **There is no DVOL for USDC.** `get_historical_volatility` for BTC returned about 16 days of hourly points; the USDC variant returned an implausible value (0.42), so **do not use it**. Compute realized vol ourselves.
 
 ### Limits and streaming
 
