@@ -1,0 +1,8 @@
+services:
+  recorder:
+    build: .
+    restart: unless-stopped
+    environment:
+      DORTRADER_JSON_LOGS: "true"
+    volumes:
+      - ./data:/data

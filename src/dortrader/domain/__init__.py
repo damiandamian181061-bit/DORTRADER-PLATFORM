@@ -1,4 +1,6 @@
 from dortrader.domain.entities import (
+    ChainRow,
+    ChainSnapshot,
     Instrument,
     InstrumentState,
     OptionQuote,
@@ -16,6 +18,8 @@ from dortrader.domain.types import (
 )
 
 __all__ = [
+    "ChainRow",
+    "ChainSnapshot",
     "Currency",
     "FrozenModel",
     "Instrument",

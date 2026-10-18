@@ -11,9 +11,10 @@ Single writer per directory. `append` returns nothing and `flush` is the acknowl
 import hashlib
 import json
 import os
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pyarrow as pa
@@ -31,6 +32,10 @@ VERSION_KEY = b"dortrader.schema_version"
 
 class ArchiveCorruptError(Exception):
     pass
+
+
+class NoDataError(Exception):
+    """No finished file overlaps the requested range."""
 
 
 @dataclass
@@ -167,7 +172,30 @@ class ParquetArchive:
         return report
 
 
-def verify_archive(directory: Path) -> VerifyReport:
+_PARTITION = re.compile(r"date=(\d{4}-\d{2}-\d{2})/hour=(\d{2})/")
+
+
+def _partition_start(relative: str) -> datetime | None:
+    match = _PARTITION.search(relative)
+    if match is None:
+        return None
+    return datetime.fromisoformat(f"{match[1]}T{match[2]}:00:00").replace(tzinfo=UTC)
+
+
+def _overlaps(relative: str, start: datetime | None, end: datetime | None) -> bool:
+    """Whether the hour partition holding `relative` can contain rows in [start, end]."""
+    hour_start = _partition_start(relative)
+    if hour_start is None or (start is None and end is None):
+        return True
+    if end is not None and hour_start > end:
+        return False
+    return not (start is not None and hour_start + timedelta(hours=1) <= start)
+
+
+def verify_archive(
+    directory: Path, *, start: datetime | None = None, end: datetime | None = None
+) -> VerifyReport:
+    """Check manifest, checksums and row counts; with start/end only for overlapping partitions."""
     report = VerifyReport()
     listed: set[str] = set()
     manifest = directory / MANIFEST
@@ -179,6 +207,8 @@ def verify_archive(directory: Path) -> VerifyReport:
     for entry in entries:
         name = entry["file"]
         listed.add(name)
+        if not _overlaps(name, start, end):
+            continue
         path = directory / name
         report.files_checked += 1
         if not path.exists():
@@ -193,19 +223,31 @@ def verify_archive(directory: Path) -> VerifyReport:
                 report.problems.append(f"{name}: unreadable")
     for path in directory.rglob("*.parquet"):
         name = path.relative_to(directory).as_posix()
-        if not name.startswith(QUARANTINE) and name not in listed:
-            report.problems.append(f"{name}: on disk but not in manifest")
+        if name.startswith(QUARANTINE) or name in listed or not _overlaps(name, start, end):
+            continue
+        report.problems.append(f"{name}: on disk but not in manifest")
     return report
 
 
-def read_archive(directory: Path, *, schema_version: int) -> pa.Table:
-    """Read every finished file, refusing unverified or wrong-version data."""
-    report = verify_archive(directory)
+def read_archive(
+    directory: Path,
+    *,
+    schema_version: int,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> pa.Table:
+    """Read finished files, refusing unverified or wrong-version data.
+
+    With start/end only the hour partitions overlapping that range are verified and read. They are
+    returned whole, so callers still filter rows by their own timestamp column.
+    """
+    report = verify_archive(directory, start=start, end=end)
     if not report.ok:
         raise ArchiveCorruptError("; ".join(report.problems))
     tables = []
     for path in sorted(directory.rglob("*.parquet")):
-        if path.relative_to(directory).as_posix().startswith(QUARANTINE):
+        relative = path.relative_to(directory).as_posix()
+        if relative.startswith(QUARANTINE) or not _overlaps(relative, start, end):
             continue
         table = pq.read_table(path)
         found = (table.schema.metadata or {}).get(VERSION_KEY)
@@ -215,5 +257,35 @@ def read_archive(directory: Path, *, schema_version: int) -> pa.Table:
             )
         tables.append(table)
     if not tables:
-        raise ArchiveCorruptError(f"no data files under {directory}")
+        raise NoDataError(f"no data files under {directory} for the requested range")
     return pa.concat_tables(tables)
+
+
+def time_bounds(directory: Path, column: str = "received_at") -> tuple[datetime, datetime] | None:
+    """Earliest and latest `column` value, from file statistics of the first and last partitions."""
+    files = sorted(
+        p
+        for p in directory.rglob("*.parquet")
+        if not p.relative_to(directory).as_posix().startswith(QUARANTINE)
+    )
+    if not files:
+        return None
+
+    def bounds(paths: list[Path]) -> list[datetime]:
+        values: list[datetime] = []
+        for path in paths:
+            meta = pq.read_metadata(path)
+            index = meta.schema.names.index(column)
+            for group in range(meta.num_row_groups):
+                stats = meta.row_group(group).column(index).statistics
+                if stats is not None and stats.has_min_max:
+                    values.extend([stats.min, stats.max])
+        return values
+
+    first_partition = files[0].parent
+    last_partition = files[-1].parent
+    low = bounds([f for f in files if f.parent == first_partition])
+    high = bounds([f for f in files if f.parent == last_partition])
+    if not low or not high:
+        return None
+    return min(low), max(high)

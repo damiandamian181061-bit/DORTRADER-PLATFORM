@@ -65,7 +65,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src/dortrader", "apps/worker"]
+source = ["src/dortrader", "apps/worker", "apps/api"]
 
 [tool.importlinter]
 root_packages = ["dortrader", "apps"]
@@ -81,6 +81,7 @@ forbidden_modules = [
     "dortrader.config",
     "dortrader.log",
     "dortrader.clock",
+    "dortrader.replay",
     "apps",
 ]
 
@@ -94,6 +95,7 @@ forbidden_modules = [
     "dortrader.config",
     "dortrader.log",
     "dortrader.clock",
+    "dortrader.replay",
     "apps",
 ]
 
@@ -101,12 +103,18 @@ forbidden_modules = [
 name = "market_data does not reach pricing, storage or apps"
 type = "forbidden"
 source_modules = ["dortrader.market_data"]
-forbidden_modules = ["dortrader.pricing", "dortrader.storage", "apps"]
+forbidden_modules = ["dortrader.pricing", "dortrader.storage", "dortrader.replay", "apps"]
 
 [[tool.importlinter.contracts]]
 name = "storage does not reach market_data, pricing or apps"
 type = "forbidden"
 source_modules = ["dortrader.storage"]
+forbidden_modules = ["dortrader.market_data", "dortrader.pricing", "dortrader.replay", "apps"]
+
+[[tool.importlinter.contracts]]
+name = "replay reads storage and domain only"
+type = "forbidden"
+source_modules = ["dortrader.replay"]
 forbidden_modules = ["dortrader.market_data", "dortrader.pricing", "apps"]
 
 [[tool.importlinter.contracts]]

@@ -3,11 +3,12 @@
 import json
 from collections.abc import Sequence
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 import pyarrow as pa
 
-from dortrader.domain import Instrument, OptionQuote, QualityFlag
+from dortrader.domain import Instrument, OptionQuote, QualityFlag, TickStep
 
 TS = pa.timestamp("us", tz="UTC")
 DEC = pa.decimal128(28, 10)
@@ -134,6 +135,18 @@ def instruments_to_table(snapshot_at: datetime, instruments: Sequence[Instrument
             }
         )
     return pa.Table.from_pylist(rows, schema=CATALOG_SCHEMA)
+
+
+def table_to_instruments(table: pa.Table) -> list[Instrument]:
+    instruments = []
+    for r in table.to_pylist():
+        steps = tuple(
+            TickStep(above_price=Decimal(d["above_price"]), tick_size=Decimal(d["tick_size"]))
+            for d in json.loads(r["tick_size_steps"])
+        )
+        fields = {k: v for k, v in r.items() if k != "snapshot_at"}
+        instruments.append(Instrument(**{**fields, "tick_size_steps": steps}))
+    return instruments
 
 
 def event_row(at: datetime, run_id: str, kind: str, detail: dict[str, object]) -> pa.Table:
