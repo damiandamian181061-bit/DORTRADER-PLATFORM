@@ -14,11 +14,6 @@ pytestmark = pytest.mark.anyio
 START = datetime(2026, 10, 18, 19, 0, tzinfo=UTC)
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 class Harness:
     """A client wired to a scripted transport and a clock that only moves when it sleeps."""
 

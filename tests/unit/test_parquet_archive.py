@@ -13,8 +13,10 @@ from dortrader.domain import OptionQuote, QualityFlag
 from dortrader.storage.parquet_archive import (
     VERSION_KEY,
     ArchiveCorruptError,
+    NoDataError,
     ParquetArchive,
     read_archive,
+    time_bounds,
     verify_archive,
 )
 from dortrader.storage.tables import (
@@ -241,3 +243,69 @@ def test_a_failed_auto_flush_keeps_rows_buffered_and_retries(
     archive.close()
 
     assert sorted(read_archive(tmp_path, schema_version=1)["id"].to_pylist()) == [1, 2]
+
+
+def write_hours(tmp_path: Path) -> ParquetArchive:
+    archive = make_archive(tmp_path)
+    for hour, value in [(11, 1), (12, 2), (13, 3), (14, 4)]:
+        archive.append(ids(value), ts=datetime(2026, 10, 18, hour, 30, tzinfo=UTC))
+    archive.close()
+    return archive
+
+
+def test_range_read_returns_only_overlapping_partitions(tmp_path: Path) -> None:
+    write_hours(tmp_path)
+
+    table = read_archive(
+        tmp_path,
+        schema_version=1,
+        start=datetime(2026, 10, 18, 12, 45, tzinfo=UTC),
+        end=datetime(2026, 10, 18, 13, 15, tzinfo=UTC),
+    )
+
+    assert sorted(table["id"].to_pylist()) == [2, 3]  # the 12:xx and 13:xx partitions
+    only_end = read_archive(
+        tmp_path, schema_version=1, end=datetime(2026, 10, 18, 11, 59, tzinfo=UTC)
+    )
+    assert only_end["id"].to_pylist() == [1]
+
+
+def test_range_read_ignores_damage_outside_the_range(tmp_path: Path) -> None:
+    write_hours(tmp_path)
+    victim = next((tmp_path / "date=2026-10-18" / "hour=14").glob("*.parquet"))
+    victim.write_bytes(victim.read_bytes()[:-5])  # truncate the 14:xx file
+
+    inside = read_archive(
+        tmp_path, schema_version=1, end=datetime(2026, 10, 18, 12, 59, tzinfo=UTC)
+    )
+
+    assert sorted(inside["id"].to_pylist()) == [1, 2]
+    with pytest.raises(ArchiveCorruptError):
+        read_archive(tmp_path, schema_version=1)
+
+
+def test_a_range_with_no_files_is_no_data_not_corruption(tmp_path: Path) -> None:
+    write_hours(tmp_path)
+
+    with pytest.raises(NoDataError):
+        read_archive(
+            tmp_path,
+            schema_version=1,
+            start=datetime(2026, 10, 19, 0, 0, tzinfo=UTC),
+            end=datetime(2026, 10, 19, 1, 0, tzinfo=UTC),
+        )
+
+
+def test_time_bounds_come_from_first_and_last_partitions(tmp_path: Path) -> None:
+    archive = ParquetArchive(
+        tmp_path, QUOTES_SCHEMA, schema_version=1, clock=ManualClock(T0), run_id="t"
+    )
+    assert time_bounds(tmp_path) is None
+    early = datetime(2026, 10, 18, 9, 5, 7, tzinfo=UTC)
+    late = datetime(2026, 10, 18, 15, 59, 1, tzinfo=UTC)
+    for received in (late, early):
+        q = quote("A", 800.0).model_copy(update={"received_at": received})
+        archive.append(quotes_to_table([q]), ts=received)
+    archive.close()
+
+    assert time_bounds(tmp_path) == (early, late)

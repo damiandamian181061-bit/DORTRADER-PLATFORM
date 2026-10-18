@@ -33,6 +33,9 @@ class QualityFlag(StrEnum):
     STALE_EXCHANGE_TS = "stale_exchange_ts"
     DUPLICATE = "duplicate"
     UNKNOWN_INSTRUMENT = "unknown_instrument"
+    MONOTONICITY_VIOLATION = "monotonicity_violation"
+    BUTTERFLY_VIOLATION = "butterfly_violation"
+    PARITY_VIOLATION = "parity_violation"
     # Reserved for the WebSocket tier and later workstreams.
     STALE_NO_UPDATE = "stale_no_update"
     OUTSIDE_PRICE_BAND = "outside_price_band"
@@ -105,3 +108,21 @@ class OptionQuote(FrozenModel):
     flags: tuple[QualityFlag, ...] = ()
     raw_sha256: str
     connection_epoch: int = 0
+
+
+class ChainRow(FrozenModel):
+    """A listed instrument with the latest quote received at or before the snapshot time."""
+
+    instrument: Instrument
+    quote: OptionQuote
+    quote_age_seconds: float
+    flags: tuple[QualityFlag, ...] = ()  # snapshot-level, e.g. STALE_NO_UPDATE; quote.flags stay
+
+
+class ChainSnapshot(FrozenModel):
+    """The option chain as it was known at `snapshot_at`. Rows are sorted for determinism."""
+
+    snapshot_at: UtcDateTime
+    rows: tuple[ChainRow, ...]
+    listed_without_quote: tuple[str, ...] = ()
+    quotes_without_instrument: tuple[str, ...] = ()

@@ -18,6 +18,7 @@ jobs:
       - run: uv run lint-imports
       - run: uv run pytest --cov --cov-fail-under=95
       - run: uv run pip-audit
+      - run: docker build -t dortrader-recorder .
 
   web:
     runs-on: ubuntu-latest

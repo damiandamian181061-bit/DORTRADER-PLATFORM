@@ -20,12 +20,15 @@ import pyarrow as pa
 
 from dortrader.clock import Clock, SystemClock
 from dortrader.config import RecorderSettings, Settings, get_settings
-from dortrader.domain import Instrument, QualityFlag
+from dortrader.domain import Instrument, OptionQuote, QualityFlag
 from dortrader.log import configure_logging, get_logger
 from dortrader.market_data.catalog import diff_catalog
 from dortrader.market_data.deribit.rest import DeribitRestClient, Envelope
 from dortrader.market_data.normalize import normalize_summary, parse_instruments
 from dortrader.market_data.quality import QualityConfig
+from dortrader.replay import fold
+from dortrader.storage.heartbeat import Heartbeat, write_heartbeat
+from dortrader.storage.layout import catalog_dir, events_dir, quotes_dir, raw_dir
 from dortrader.storage.parquet_archive import ParquetArchive
 from dortrader.storage.tables import (
     CATALOG_SCHEMA,
@@ -78,23 +81,21 @@ class Recorder:
         self.run_id = run_id or f"{clock.now():%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
         self._quality = QualityConfig(settings.wide_spread_ratio, settings.stale_exchange_seconds)
         base = settings.data_dir
-        source = "source=deribit"
-        self.raw = self._archive(
-            base / "raw" / source / "channel=book_summary", RAW_SCHEMA, RAW_VERSION
-        )
+        self.raw = self._archive(raw_dir(base), RAW_SCHEMA, RAW_VERSION)
         self.quotes = self._archive(
-            base / "normalized" / source / "channel=book_summary",
+            quotes_dir(base),
             QUOTES_SCHEMA,
             QUOTES_VERSION,
             sort_by=[("instrument_name", "ascending"), ("received_at", "ascending")],
         )
         self.catalog_archive = self._archive(
-            base / "catalog" / source, CATALOG_SCHEMA, CATALOG_VERSION, flush_seconds=0.0
+            catalog_dir(base), CATALOG_SCHEMA, CATALOG_VERSION, flush_seconds=0.0
         )
         self.events = self._archive(
-            base / "events", EVENTS_SCHEMA, EVENTS_VERSION, flush_seconds=0.0
+            events_dir(base), EVENTS_SCHEMA, EVENTS_VERSION, flush_seconds=0.0
         )
         self.catalog: dict[str, Instrument] = {}
+        self.chain_state: dict[str, OptionQuote] = {}  # live aggregator, same reducer as replay
         self._catalog_attempt: float | None = None
         self._catalog_day: str | None = None
         self._last_good: datetime | None = None
@@ -233,6 +234,7 @@ class Recorder:
             ],
             schema=RAW_SCHEMA,
         )
+        self.chain_state = fold(self.chain_state, quotes)
         self.raw.append(raw, ts=envelope.received_at)
         self.quotes.append(quotes_to_table(quotes), ts=envelope.received_at)
 
@@ -250,6 +252,17 @@ class Recorder:
                 )
                 log.warning("recording gap", seconds=missed)
         self._last_good = envelope.received_at
+
+        write_heartbeat(
+            self._cfg.data_dir,
+            Heartbeat(
+                run_id=self.run_id,
+                last_good_at=envelope.received_at,
+                written_at=self._clock.now(),
+                quotes=len(quotes),
+                poll_interval_seconds=self._cfg.poll_interval_seconds,
+            ),
+        )
 
         flagged = sum(1 for q in quotes if q.flags)
         log.info(

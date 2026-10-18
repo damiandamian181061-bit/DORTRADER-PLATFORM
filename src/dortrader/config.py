@@ -40,7 +40,7 @@ class RecorderSettings(BaseModel):
     poll_interval_seconds: float = Field(default=30.0, gt=0)
     catalog_refresh_seconds: float = Field(default=600.0, gt=0)
     data_dir: Path = Path("data")
-    flush_seconds: float = Field(default=300.0, gt=0)
+    flush_seconds: float = Field(default=60.0, gt=0)
     wide_spread_ratio: float = Field(default=0.5, gt=0)
     stale_exchange_seconds: float = Field(default=60.0, gt=0)
     clock_drift_seconds: float = Field(default=2.0, gt=0)

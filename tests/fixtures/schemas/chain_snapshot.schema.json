@@ -1,0 +1,501 @@
+{
+  "$defs": {
+    "ChainRow": {
+      "additionalProperties": false,
+      "description": "A listed instrument with the latest quote received at or before the snapshot time.",
+      "properties": {
+        "flags": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/QualityFlag"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "instrument": {
+          "$ref": "#/$defs/Instrument"
+        },
+        "quote": {
+          "$ref": "#/$defs/OptionQuote"
+        },
+        "quote_age_seconds": {
+          "title": "Quote Age Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "instrument",
+        "quote",
+        "quote_age_seconds"
+      ],
+      "title": "ChainRow",
+      "type": "object"
+    },
+    "Instrument": {
+      "additionalProperties": false,
+      "properties": {
+        "base_currency": {
+          "enum": [
+            "BTC",
+            "USDC",
+            "USD"
+          ],
+          "title": "Base Currency",
+          "type": "string"
+        },
+        "contract_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Contract Size"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expiration": {
+          "format": "date-time",
+          "title": "Expiration",
+          "type": "string"
+        },
+        "instrument_id": {
+          "title": "Instrument Id",
+          "type": "integer"
+        },
+        "instrument_type": {
+          "enum": [
+            "linear",
+            "reversed"
+          ],
+          "title": "Instrument Type",
+          "type": "string"
+        },
+        "is_active": {
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "maker_commission": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maker Commission"
+        },
+        "min_trade_amount": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Min Trade Amount"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "option_type": {
+          "enum": [
+            "call",
+            "put"
+          ],
+          "title": "Option Type",
+          "type": "string"
+        },
+        "price_index": {
+          "title": "Price Index",
+          "type": "string"
+        },
+        "quote_currency": {
+          "enum": [
+            "BTC",
+            "USDC",
+            "USD"
+          ],
+          "title": "Quote Currency",
+          "type": "string"
+        },
+        "settlement_currency": {
+          "enum": [
+            "BTC",
+            "USDC",
+            "USD"
+          ],
+          "title": "Settlement Currency",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "settlement",
+            "delivered",
+            "inactive",
+            "locked",
+            "halted",
+            "archivized"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "strike": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Strike"
+        },
+        "taker_commission": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Taker Commission"
+        },
+        "tick_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Tick Size"
+        },
+        "tick_size_steps": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TickStep"
+          },
+          "title": "Tick Size Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "instrument_id",
+        "name",
+        "base_currency",
+        "quote_currency",
+        "settlement_currency",
+        "instrument_type",
+        "option_type",
+        "strike",
+        "expiration",
+        "created_at",
+        "contract_size",
+        "tick_size",
+        "min_trade_amount",
+        "state",
+        "is_active",
+        "price_index"
+      ],
+      "title": "Instrument",
+      "type": "object"
+    },
+    "OptionQuote": {
+      "additionalProperties": false,
+      "description": "One observation of an option's top of book and mark, as received.",
+      "properties": {
+        "ask_price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ask Price"
+        },
+        "bid_price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Bid Price"
+        },
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "connection_epoch": {
+          "default": 0,
+          "title": "Connection Epoch",
+          "type": "integer"
+        },
+        "exchange_ts": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Exchange Ts"
+        },
+        "flags": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/QualityFlag"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "instrument_name": {
+          "title": "Instrument Name",
+          "type": "string"
+        },
+        "interest_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interest Rate"
+        },
+        "last_price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Price"
+        },
+        "mark_iv": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mark Iv"
+        },
+        "mark_price": {
+          "minimum": 0,
+          "title": "Mark Price",
+          "type": "number"
+        },
+        "open_interest": {
+          "minimum": 0,
+          "title": "Open Interest",
+          "type": "number"
+        },
+        "raw_sha256": {
+          "title": "Raw Sha256",
+          "type": "string"
+        },
+        "received_at": {
+          "format": "date-time",
+          "title": "Received At",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "underlying_index": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Underlying Index"
+        },
+        "underlying_price": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Underlying Price"
+        },
+        "volume": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Volume"
+        }
+      },
+      "required": [
+        "instrument_name",
+        "source",
+        "channel",
+        "received_at",
+        "exchange_ts",
+        "bid_price",
+        "ask_price",
+        "mark_price",
+        "mark_iv",
+        "underlying_price",
+        "underlying_index",
+        "interest_rate",
+        "open_interest",
+        "volume",
+        "last_price",
+        "raw_sha256"
+      ],
+      "title": "OptionQuote",
+      "type": "object"
+    },
+    "QualityFlag": {
+      "enum": [
+        "no_bid",
+        "no_ask",
+        "crossed",
+        "locked",
+        "wide_spread",
+        "off_tick",
+        "iv_missing",
+        "stale_exchange_ts",
+        "duplicate",
+        "unknown_instrument",
+        "monotonicity_violation",
+        "butterfly_violation",
+        "parity_violation",
+        "stale_no_update",
+        "outside_price_band",
+        "underlying_stale",
+        "sequence_gap",
+        "clock_drift"
+      ],
+      "title": "QualityFlag",
+      "type": "string"
+    },
+    "TickStep": {
+      "additionalProperties": false,
+      "description": "Prices above `above_price` move in steps of `tick_size`.",
+      "properties": {
+        "above_price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Above Price"
+        },
+        "tick_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Tick Size"
+        }
+      },
+      "required": [
+        "above_price",
+        "tick_size"
+      ],
+      "title": "TickStep",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The option chain as it was known at `snapshot_at`. Rows are sorted for determinism.",
+  "properties": {
+    "listed_without_quote": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Listed Without Quote",
+      "type": "array"
+    },
+    "quotes_without_instrument": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Quotes Without Instrument",
+      "type": "array"
+    },
+    "rows": {
+      "items": {
+        "$ref": "#/$defs/ChainRow"
+      },
+      "title": "Rows",
+      "type": "array"
+    },
+    "snapshot_at": {
+      "format": "date-time",
+      "title": "Snapshot At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "snapshot_at",
+    "rows"
+  ],
+  "title": "ChainSnapshot",
+  "type": "object"
+}

@@ -25,15 +25,18 @@ Out of scope here: strategy generation, backtester, risk gateway, ML challengers
 | F1 package restructure, import-linter | Done (5 contracts) |
 | F2 domain schemas | Partly: `Instrument`, `OptionQuote`, `QualityFlag`, `Money`, value types. `BookLevel`, `OrderBook`, `ChainSnapshot` wait for D4 and D6 |
 | F3 config, logging, clock | Done |
-| F4 test harness, CI | Partly: markers, network blocked, coverage floor 95%, lock check, import-linter, pip-audit, npm audit. Postgres service container and container builds wait for F5 |
+| F4 test harness, CI | Done except the Postgres service container (waits for F5). Markers, network blocked, coverage floor 95%, lock check, import-linter, pip-audit, npm audit, Docker build. CI ran green on Linux |
 | D0 spike and fixtures | Done (fixtures, WebSocket probe). Observing the 19 Oct 08:00 UTC expiry not done |
 | D1 REST client, catalog, normalizer | Done. Catalog is kept as Parquet snapshots until F5 |
 | D2 Parquet archive | Done, including a kill-the-writer crash test |
-| D3 Tier 1 recorder | Done and run live. **Not yet running 24/7**: it needs a host (decision D-1) |
+| D3 Tier 1 recorder | Done and run live, with a heartbeat file, Docker healthcheck, `Dockerfile` and `docker-compose.yml` (`docs/deploy.md`). **Not yet running 24/7**: you still need to provision the host (D-1) |
 | P1 Black-76 and Greeks | Done |
 | P2 implied vol solver | Done |
 | P3 reference validation | Done for QuantLib, properties, finite differences and Deribit replication. The report over recorded chains needs D3 data |
-| F5, F6, D4 to D9, P4 to P6, V1 to V7 | Not started |
+| D4 point-in-time replay | Done: `ChainSnapshot`, shared reducer, `ChainStore.as_of`, equivalence and determinism tests. The materialized 1-minute snapshot grid is deferred (reading the normalized archive directly is fast enough) |
+| P4 chain pricing and arbitrage flags | Done: `price_chain`, monotonicity, butterfly and parity flags. Preliminary report in `docs/validation/chain-vs-deribit.md` (about 100 s of data) |
+| D9 / P5 chain view | Done for the chain: `GET /api/chain`, `/api/instruments`, `/api/status` and the web chain page. The standalone pricing calculator and the data-quality coverage view are not built |
+| F5, F6, D5 to D8, P6, V1 to V7 | Not started |
 
 Deviations from the plan as written:
 
@@ -41,6 +44,9 @@ Deviations from the plan as written:
 - Clock offset comes from `get_index_price`, not the book summary (see measurements below).
 - The IV solver is vectorized safeguarded Newton with bisection fallback, not Brent. Statuses: `OK`, `INVALID_INPUT`, `BELOW_INTRINSIC`, `AT_INTRINSIC`, `ABOVE_UPPER_BOUND`, `NO_BRACKET`, `NOT_CONVERGED`.
 - `config`, `log` and `clock` are single modules, not packages.
+- Chain pricing reports the bid-to-ask IV range as the executable range of fair vol. The half-tick interval (`implied_vol_interval`) exists but is not used there, because bid and ask are exact quotes and a mark price has no tick.
+- A new `dortrader.replay` package holds the reducer and `ChainStore`, with its own layering contract; the recorder keeps a live chain state with the same reducer.
+- The recorder's flush interval default is 60 s, not 300 s, so a hard crash loses at most a minute.
 
 ## 1. Facts verified against Deribit on 2026-10-18
 
