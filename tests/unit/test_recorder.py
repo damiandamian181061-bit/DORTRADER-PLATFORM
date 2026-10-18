@@ -157,3 +157,26 @@ async def test_start_recovers_files_a_crash_left_behind(tmp_path: Path) -> None:
     assert not orphan.exists()
     assert (tmp_path / "events" / "_quarantine" / orphan.name).exists()
     assert datetime(2026, 10, 18, tzinfo=UTC) < rig.clock.now()
+
+
+async def test_downtime_between_runs_is_logged_as_a_gap(tmp_path: Path) -> None:
+    first = Rig(tmp_path)
+    await first.recorder.run_cycle()
+    first.recorder.close()
+
+    second = Rig(tmp_path)  # a restarted recorder on the same data directory
+    second.clock.advance(300)  # five minutes later
+    second.recorder.start()
+    await second.recorder.run_cycle()
+
+    gaps = [e for e in second.events() if e["kind"] == "gap"]
+    assert len(gaps) == 1 and gaps[0]["detail"]["seconds"] == pytest.approx(300)
+
+
+async def test_a_first_ever_run_has_no_previous_cycle_to_measure_a_gap_from(tmp_path: Path) -> None:
+    rig = Rig(tmp_path)
+    rig.recorder.start()
+    await rig.recorder.run_cycle()
+
+    rig.recorder.close()
+    assert not list((tmp_path / "events").rglob("*.parquet"))  # nothing was logged at all

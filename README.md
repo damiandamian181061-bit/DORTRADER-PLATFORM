@@ -32,14 +32,25 @@ uv run python scripts/evaluate_vol_forecasts.py --data-dir data
 
 To run it around the clock in Docker (heartbeat, healthcheck, restart on failure), see `docs/deploy.md`.
 
-## View the chain
+## Use the web app
 
 ```bash
 uv run uvicorn apps.api.main:app --port 8000
 cd apps/web && npm run dev          # http://localhost:5173
 ```
 
-The **Option chain** tab shows the recorded chain at any recorded UTC time: bid, ask, mark, our implied vol next to Deribit's, delta, vega and quality flags. The API (`/api/chain`, `/api/instruments`, `/api/status`) reads the same `DORTRADER_RECORDER__DATA_DIR`. The **Volatility** tab charts realized volatility against DVOL, shows each model's current forecast and how well it has done out of sample (it needs the backfill and the evaluation script above). To compare our implied vols with Deribit's over a recorded range:
+Both read the same `DORTRADER_RECORDER__DATA_DIR`. The tabs map to the backend, and the URL hash (`#/chain`, `#/volatility`, `#/pricing`, `#/data`) opens one directly.
+
+| Tab | What you can test |
+|---|---|
+| **Option chain** | The recorded chain at any recorded UTC time: bid, ask, mark, our implied vol next to Deribit's, Greeks, quality and arbitrage flags, and a summary of how closely our IV agrees with Deribit's. Click a mark price to open that contract in the calculator. |
+| **Volatility** | Realized volatility (pick the series, window, range and estimators) against DVOL, every model's current forecast, and how well each has forecast out of sample. Needs the backfill and `scripts/evaluate_vol_forecasts.py`. |
+| **Pricing** | The Black-76 calculator: volatility to price and Greeks, or price to implied volatility with its solver status and the tick-sized uncertainty, scaled to a position. |
+| **Data** | Recorder health, stored candle series with their holes, a chart of any stored series, the recorder's event log (gaps, errors, schema drift, catalog changes), and the instrument catalog as it was at any time. |
+
+API: `/api/chain`, `/api/instruments`, `/api/status`, `/api/events`, `/api/bars`, `/api/bars/coverage`, `/api/vol/realized`, `/api/vol/forecast`, `/api/vol/evaluation`, and `POST /api/price`. The interactive docs are at http://localhost:8000/docs.
+
+To compare our implied vols with Deribit's over a recorded range:
 
 ```bash
 uv run python scripts/compare_chain_to_deribit.py --data-dir data --out docs/validation/chain-vs-deribit.md

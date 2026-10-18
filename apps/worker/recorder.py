@@ -27,7 +27,7 @@ from dortrader.market_data.deribit.rest import DeribitRestClient, Envelope
 from dortrader.market_data.normalize import normalize_summary, parse_instruments
 from dortrader.market_data.quality import QualityConfig
 from dortrader.replay import fold
-from dortrader.storage.heartbeat import Heartbeat, write_heartbeat
+from dortrader.storage.heartbeat import Heartbeat, read_heartbeat, write_heartbeat
 from dortrader.storage.layout import catalog_dir, events_dir, quotes_dir, raw_dir
 from dortrader.storage.parquet_archive import ParquetArchive
 from dortrader.storage.tables import (
@@ -125,6 +125,10 @@ class Recorder:
             report = archive.recover()
             if report.promoted or report.quarantined:
                 log.warning("recovered archive", dir=str(archive.directory), **report.__dict__)
+        # Downtime between runs is a gap too: measure it from the last cycle the previous run saw.
+        previous = read_heartbeat(self._cfg.data_dir)
+        if previous is not None:
+            self._last_good = previous.last_good_at
 
     def close(self) -> None:
         for archive in (self.raw, self.quotes, self.catalog_archive, self.events):

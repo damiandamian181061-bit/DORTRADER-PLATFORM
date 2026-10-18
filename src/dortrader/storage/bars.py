@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -54,6 +55,15 @@ def find_gaps(starts: Sequence[datetime], step_seconds: int) -> list[Gap]:
         if missing > 0:
             gaps.append(Gap(earlier, later, missing))
     return gaps
+
+
+@dataclass(frozen=True)
+class Coverage:
+    first: datetime
+    last: datetime
+    candles: int
+    gaps: int  # holes in the series
+    missing: int  # candles that should exist inside those holes
 
 
 def _month_bounds(path: Path) -> tuple[datetime, datetime]:
@@ -116,6 +126,42 @@ class BarStore:
         if end is not None:
             mask = pc.and_(mask, pc.less_equal(table["start"], end))
         return [Bar(**row) for row in table.filter(mask).sort_by("start").to_pylist()]
+
+    def series(self) -> list[tuple[str, int]]:
+        """Every (instrument, candle size) with stored candles."""
+        found = []
+        for instrument_dir in sorted(self._root.glob("instrument=*")):
+            for step_dir in sorted(instrument_dir.glob("step=*")):
+                if any(step_dir.glob("*.parquet")):
+                    found.append(
+                        (instrument_dir.name.split("=", 1)[1], int(step_dir.name.split("=", 1)[1]))
+                    )
+        return sorted(found)  # candle sizes in numeric order, not directory-name order
+
+    def coverage(self, instrument: str, step_seconds: int) -> Coverage | None:
+        """First and last candle, how many, and the holes, reading only the start column."""
+        directory = self._directory(instrument, step_seconds)
+        files = sorted(directory.glob("*.parquet")) if directory.exists() else []
+        if not files:
+            return None
+        starts = np.sort(
+            np.concatenate(
+                [
+                    pq.read_table(path, columns=["start"])["start"].to_numpy().astype("int64")
+                    for path in files
+                ]
+            )
+        )
+        step_us = step_seconds * 1_000_000
+        missing_per_gap = np.diff(starts) // step_us - 1
+        holes = missing_per_gap[missing_per_gap > 0]
+        return Coverage(
+            first=datetime.fromtimestamp(starts[0] / 1e6, tz=UTC),
+            last=datetime.fromtimestamp(starts[-1] / 1e6, tz=UTC),
+            candles=len(starts),
+            gaps=len(holes),
+            missing=int(holes.sum()),
+        )
 
     def bounds(self, instrument: str, step_seconds: int) -> tuple[datetime, datetime] | None:
         directory = self._directory(instrument, step_seconds)

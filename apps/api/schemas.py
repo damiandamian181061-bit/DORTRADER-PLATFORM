@@ -1,6 +1,7 @@
 """JSON shapes the web app depends on."""
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -105,3 +106,60 @@ class ForecastResponse(BaseModel):
     last_realized: list[LastRealized]
     dvol: float | None
     horizons: list[HorizonForecast]
+
+
+class SeriesCoverage(BaseModel):
+    instrument: str
+    step_seconds: int
+    first: datetime
+    last: datetime
+    candles: int
+    gaps: int
+    missing: int
+
+
+class BarPoint(BaseModel):
+    time: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float | None
+
+
+class BarsResponse(BaseModel):
+    instrument: str
+    step_seconds: int
+    stride: int  # 1 means every candle; 2 means every second one, and so on
+    points: list[BarPoint]
+
+
+class EventView(BaseModel):
+    at: datetime
+    run_id: str
+    kind: str
+    detail: dict[str, Any]
+
+
+class TickStepView(BaseModel):
+    above_price: float
+    tick_size: float
+
+
+class InstrumentView(BaseModel):
+    """An instrument for display: exact decimals from storage become plain numbers."""
+
+    instrument_id: int
+    name: str
+    option_type: str
+    strike: float
+    expiration: datetime
+    created_at: datetime
+    contract_size: float
+    tick_size: float
+    tick_size_steps: list[TickStepView]
+    min_trade_amount: float
+    state: str
+    is_active: bool
+    maker_commission: float | None
+    taker_commission: float | None

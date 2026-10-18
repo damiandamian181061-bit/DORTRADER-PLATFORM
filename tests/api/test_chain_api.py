@@ -115,6 +115,10 @@ def test_instruments_lists_what_was_listed_at_that_time(rig: Rig, client: TestCl
     body = client.get("/api/instruments").json()
 
     assert len(body) == 88 and body[0]["name"].startswith("BTC_USDC-")
+    first = body[0]  # plain numbers, not exact-decimal strings
+    assert isinstance(first["strike"], float) and first["tick_size"] == 5.0
+    assert first["tick_size_steps"] == [{"above_price": 1000.0, "tick_size": 20.0}]
+    assert first["min_trade_amount"] == 0.01 and first["contract_size"] == 1.0
 
 
 def test_status_is_healthy_right_after_a_cycle_and_unhealthy_when_stale(

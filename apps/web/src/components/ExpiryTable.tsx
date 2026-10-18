@@ -11,6 +11,7 @@ import {
   nearestStrikeIndex,
 } from '../lib/chain'
 import type { Contract, Expiry } from '../lib/chain'
+import type { ContractPick } from '../lib/pricing'
 
 const SIDE_COLUMNS = [
   'Bid',
@@ -23,7 +24,13 @@ const SIDE_COLUMNS = [
   'Flags',
 ]
 
-function Cells({ contract }: { contract: Contract | null }) {
+function Cells({
+  contract,
+  onPrice,
+}: {
+  contract: Contract | null
+  onPrice?: () => void
+}) {
   if (contract === null) {
     return SIDE_COLUMNS.map((name) => (
       <td key={name} className="px-2 py-1 text-right text-slate-600">
@@ -43,7 +50,18 @@ function Cells({ contract }: { contract: Contract | null }) {
         {fmtPrice(contract.ask)}
       </td>
       <td className={`px-2 py-1 text-right ${quiet}`}>
-        {fmtPrice(contract.mark)}
+        {onPrice ? (
+          <button
+            type="button"
+            onClick={onPrice}
+            title="Open in the pricing calculator"
+            className="underline decoration-dotted underline-offset-2 hover:text-sky-300"
+          >
+            {fmtPrice(contract.mark)}
+          </button>
+        ) : (
+          fmtPrice(contract.mark)
+        )}
       </td>
       <td className={`px-2 py-1 text-right ${quiet}`}>
         {fmtIv(contract.mark_iv)}
@@ -67,7 +85,28 @@ function Cells({ contract }: { contract: Contract | null }) {
   )
 }
 
-export function ExpiryTable({ expiry }: { expiry: Expiry }) {
+export function ExpiryTable({
+  expiry,
+  onPrice,
+}: {
+  expiry: Expiry
+  onPrice?: (pick: ContractPick) => void
+}) {
+  const pickFor = (
+    strike: number,
+    optionType: 'call' | 'put',
+    contract: Contract | null,
+  ) =>
+    onPrice && contract
+      ? () =>
+          onPrice({
+            optionType,
+            forward: expiry.forward,
+            strike,
+            yearsToExpiry: expiry.years_to_expiry,
+            mark: contract.mark,
+          })
+      : undefined
   const atTheMoney = nearestStrikeIndex(expiry.strikes, expiry.forward)
   return (
     <section className="space-y-2">
@@ -126,14 +165,20 @@ export function ExpiryTable({ expiry }: { expiry: Expiry }) {
                 key={row.strike}
                 className={`border-t border-slate-800/70 ${index === atTheMoney ? 'bg-slate-800/60' : ''}`}
               >
-                <Cells contract={row.call} />
+                <Cells
+                  contract={row.call}
+                  onPrice={pickFor(row.strike, 'call', row.call)}
+                />
                 <th
                   scope="row"
                   className={`px-3 py-1 text-center ${index === atTheMoney ? 'text-white' : 'text-slate-300'}`}
                 >
                   {row.strike.toLocaleString('en-US')}
                 </th>
-                <Cells contract={row.put} />
+                <Cells
+                  contract={row.put}
+                  onPrice={pickFor(row.strike, 'put', row.put)}
+                />
               </tr>
             ))}
           </tbody>

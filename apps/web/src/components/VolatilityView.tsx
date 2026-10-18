@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { fmtUtc } from '../lib/chain'
 import {
+  ESTIMATOR_LABELS,
   dash,
   fetchEvaluation,
   fetchForecast,
@@ -15,72 +16,40 @@ import {
   toTraces,
   verdictClass,
 } from '../lib/vol'
-import type { Evaluation, Forecast, RealizedVol } from '../lib/vol'
+import type { Forecast } from '../lib/vol'
+import { Alert, Field, Note, Section, inputClass } from './ui'
+import { useRemote } from './useRemote'
 
 const PlotlyChart = lazy(() => import('./PlotlyChart'))
 
-const WINDOWS = [7, 30, 90]
-const ESTIMATORS = ['close_to_close', 'yang_zhang']
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : 'request failed'
-}
-
-function Alert({ text }: { text: string }) {
-  return (
-    <p
-      role="alert"
-      className="rounded border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-200"
-    >
-      {text}
-    </p>
-  )
-}
-
-/** Fetches once per key and reports data, error and whether the request is still running. */
-function useRemote<T>(load: (signal: AbortSignal) => Promise<T>, key: string) {
-  const [state, setState] = useState<{
-    key: string
-    data: T | null
-    error: string | null
-  }>({
-    key: '',
-    data: null,
-    error: null,
-  })
-  useEffect(() => {
-    const controller = new AbortController()
-    load(controller.signal)
-      .then((data) => setState({ key, data, error: null }))
-      .catch((failure: unknown) => {
-        if (!controller.signal.aborted)
-          setState({ key, data: null, error: message(failure) })
-      })
-    return () => controller.abort()
-    // `load` is rebuilt every render; the key says when the request really changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
-  return { data: state.data, error: state.error, loading: state.key !== key }
-}
+const INSTRUMENTS = ['BTC_USDC-PERPETUAL', 'BTC-PERPETUAL']
+const WINDOWS = [7, 14, 30, 90]
+const RANGES = [90, 180, 365, 730]
 
 export function VolatilityView() {
+  const [instrument, setInstrument] = useState(INSTRUMENTS[0])
   const [windowDays, setWindowDays] = useState(30)
+  const [days, setDays] = useState(365)
+  const [estimators, setEstimators] = useState<string[]>([
+    'close_to_close',
+    'yang_zhang',
+  ])
   const [horizon, setHorizon] = useState(24)
 
-  const realized = useRemote<RealizedVol>(
+  const realized = useRemote(
     (signal) =>
       fetchRealized(
-        { windowDays, days: 365, estimators: ESTIMATORS },
+        { instrument, windowDays, days, estimators },
         fetch,
         signal,
       ),
-    `realized-${windowDays}`,
+    `realized-${instrument}-${windowDays}-${days}-${estimators.join(',')}`,
   )
-  const forecast = useRemote<Forecast>(
-    (signal) => fetchForecast(fetch, signal),
-    'forecast',
+  const forecast = useRemote(
+    (signal) => fetchForecast(instrument, fetch, signal),
+    `forecast-${instrument}`,
   )
-  const evaluation = useRemote<Evaluation>(
+  const evaluation = useRemote(
     (signal) => fetchEvaluation(fetch, signal),
     'evaluation',
   )
@@ -93,79 +62,125 @@ export function VolatilityView() {
     (h) => h.horizon_hours === horizon,
   )
 
+  const toggleEstimator = (id: string) =>
+    setEstimators((current) =>
+      current.includes(id)
+        ? current.length > 1
+          ? current.filter((e) => e !== id)
+          : current // at least one estimator stays selected
+        : [...current, id],
+    )
+
   return (
     <div className="space-y-10">
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2 className="text-lg font-medium">
-            Realized volatility against DVOL
-          </h2>
-          <label className="flex flex-col gap-1 text-sm text-slate-400">
-            Window
+      <Section title="Realized volatility against DVOL">
+        <div className="flex flex-wrap items-end gap-4">
+          <Field label="Series">
             <select
-              value={windowDays}
-              onChange={(event) => setWindowDays(Number(event.target.value))}
-              className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-slate-100"
+              className={inputClass}
+              value={instrument}
+              onChange={(e) => setInstrument(e.target.value)}
             >
-              {WINDOWS.map((days) => (
-                <option key={days} value={days}>
-                  {days} days
+              {INSTRUMENTS.map((name) => (
+                <option key={name} value={name}>
+                  {name}
                 </option>
               ))}
             </select>
-          </label>
+          </Field>
+          <Field label="Window">
+            <select
+              className={inputClass}
+              value={windowDays}
+              onChange={(e) => setWindowDays(Number(e.target.value))}
+            >
+              {WINDOWS.map((n) => (
+                <option key={n} value={n}>
+                  {n} days
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Show">
+            <select
+              className={inputClass}
+              value={days}
+              onChange={(e) => setDays(Number(e.target.value))}
+            >
+              {RANGES.map((n) => (
+                <option key={n} value={n}>
+                  last {n} days
+                </option>
+              ))}
+            </select>
+          </Field>
+          <fieldset className="flex flex-col gap-1 text-sm text-slate-400">
+            <legend className="sr-only">Estimators</legend>
+            Estimators
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {Object.entries(ESTIMATOR_LABELS).map(([id, label]) => (
+                <label
+                  key={id}
+                  className="flex items-center gap-1.5 text-slate-200"
+                >
+                  <input
+                    type="checkbox"
+                    checked={estimators.includes(id)}
+                    onChange={() => toggleEstimator(id)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
         </div>
-        <p className="text-sm text-slate-400">
-          Annualized, from hourly {realized.data?.instrument ?? 'perpetual'}{' '}
-          candles, one point per day. DVOL is Deribit&apos;s 30-day implied
-          volatility index.
-        </p>
+        <Note>
+          Annualized, from hourly {instrument} candles, one point per day. DVOL
+          is Deribit&apos;s 30-day implied volatility index. Range-based
+          estimators (Parkinson, Garman-Klass, Rogers-Satchell, Yang-Zhang) use
+          each candle&apos;s high and low and are steadier than close-to-close,
+          but read a little low on sampled prices.
+        </Note>
         {realized.error && <Alert text={realized.error} />}
-        {realized.loading && !realized.data && (
-          <p className="text-sm text-slate-500">Loading chart…</p>
-        )}
+        {realized.loading && !realized.data && <Note>Loading chart…</Note>}
         {realized.data && (
           <div className={realized.loading ? 'opacity-60' : undefined}>
-            <Suspense
-              fallback={
-                <p className="text-sm text-slate-500">Loading chart…</p>
-              }
-            >
+            <Suspense fallback={<Note>Loading chart…</Note>}>
               <PlotlyChart
                 traces={traces}
                 yTitle="annualized vol (%)"
-                label="Realized volatility and DVOL over the last year"
+                label={`Realized volatility of ${instrument} and DVOL over the last ${days} days`}
               />
             </Suspense>
           </div>
         )}
-      </section>
+      </Section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Forecasts now</h2>
+      <Section title="Forecasts now">
         {forecast.error && <Alert text={forecast.error} />}
         {forecast.data && <ForecastTable forecast={forecast.data} />}
-        {forecast.loading && !forecast.data && !forecast.error && (
-          <p className="text-sm text-slate-500">
-            Fitting models, this takes a few seconds…
-          </p>
+        {forecast.loading && !forecast.error && (
+          <Note>
+            Fitting the models, this takes a few seconds the first time…
+          </Note>
         )}
-      </section>
+      </Section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">
-          How well each model has forecast
-        </h2>
+      <Section title="How well each model has forecast">
         {evaluation.error && <Alert text={evaluation.error} />}
         {evaluation.data && (
           <>
-            <p className="text-sm text-slate-400">
+            <Note>
               Out of sample on {evaluation.data.series},{' '}
               {fmtUtc(evaluation.data.window_start)} to{' '}
               {fmtUtc(evaluation.data.window_end)}. QLIKE is the loss (lower is
               better). A model is better than naive only if the whole interval
-              of its QLIKE gain is above zero.
-            </p>
+              of its QLIKE gain is above zero. Run{' '}
+              <code className="text-slate-300">
+                uv run python scripts/evaluate_vol_forecasts.py
+              </code>{' '}
+              to refresh it.
+            </Note>
             <div
               role="tablist"
               aria-label="Forecast horizon"
@@ -258,7 +273,7 @@ export function VolatilityView() {
             </table>
           </div>
         )}
-      </section>
+      </Section>
     </div>
   )
 }
@@ -270,10 +285,11 @@ function ForecastTable({ forecast }: { forecast: Forecast }) {
     forecast.last_realized.find((r) => r.window_hours === hours)?.vol ?? null
   return (
     <>
-      <p className="text-sm text-slate-400">
-        As of {fmtUtc(forecast.as_of)}: the annualized volatility each model
-        expects over the next 24 hours, 7 days and 30 days.
-      </p>
+      <Note>
+        {forecast.instrument}, as of {fmtUtc(forecast.as_of)}: the annualized
+        volatility each model expects over the next 24 hours, 7 days and 30
+        days.
+      </Note>
       <div className="overflow-x-auto rounded border border-slate-800">
         <table className="w-full min-w-[32rem] border-collapse text-sm">
           <caption className="sr-only">
@@ -340,6 +356,11 @@ function ForecastTable({ forecast }: { forecast: Forecast }) {
           </tbody>
         </table>
       </div>
+      <Note>
+        GARCH forecasts head toward their fitted long-run volatility, which on
+        this data sits well above recent realized volatility; the evaluation
+        below shows how much that costs.
+      </Note>
     </>
   )
 }
